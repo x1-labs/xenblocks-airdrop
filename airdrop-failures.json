@@ -1,0 +1,70 @@
+{
+  "93Hd48EXeid4gsHoVSXf33ZwcRe1tHh2KwfMH96i5Jux": {
+    "error": "Simulation failed. \nMessage: Transaction simulation failed: Attempt to debit an account but found no record of a prior credit.. \nLogs: \n[]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "timestamp": "2025-07-23T18:57:46.088Z"
+  },
+  "2MAnCcaRoDKMdtUcKLL4uD3cU3GxTuGqXput2tQgYxFi": {
+    "error": "Simulation failed. \nMessage: Transaction simulation failed: Attempt to debit an account but found no record of a prior credit.. \nLogs: \n[]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "timestamp": "2025-07-23T18:57:46.336Z"
+  },
+  "BKh77fpoUtmeVdyCVtWzKZhTfoAkA8n7hJ4pW7xynwHV": {
+    "error": "Simulation failed. \nMessage: Transaction simulation failed: Attempt to debit an account but found no record of a prior credit.. \nLogs: \n[]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "timestamp": "2025-07-23T18:57:46.583Z"
+  },
+  "BHJuHtmQEAk8sEtvd8w9J9XRfaN4NAAnDiH1N7XnhoHL": {
+    "error": "Simulation failed. \nMessage: Transaction simulation failed: Attempt to debit an account but found no record of a prior credit.. \nLogs: \n[]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "timestamp": "2025-07-23T18:57:46.833Z"
+  },
+  "3eSwVaahV1fbhhxmYsC26ShPQgY1ieRBMXNHrvzKY4Sg": {
+    "error": "Simulation failed. \nMessage: Transaction simulation failed: Attempt to debit an account but found no record of a prior credit.. \nLogs: \n[]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "timestamp": "2025-07-23T18:57:47.074Z"
+  },
+  "BDCM8DLuWEyaTda8hLqx5Yaj5Mux7kGsRDXKdwNknj3R": {
+    "error": "TokenAccountNotFoundError",
+    "timestamp": "2025-07-23T18:55:45.304Z"
+  },
+  "HkBpGC1GjyNyxAiQ3m5uqPdre4M1cRHVXmR7tyJNksKJ": {
+    "error": "TokenAccountNotFoundError",
+    "timestamp": "2025-07-23T18:55:45.706Z"
+  },
+  "SBZZuDjKMksfow7ffXcSzz62LvGaceoNU5npt2Aaccz": {
+    "error": "TokenAccountNotFoundError",
+    "timestamp": "2025-07-23T18:55:46.115Z"
+  },
+  "HtVxNyLcLFrhDt4LKbb4P7CNh9e7fkBpQYeqwQWSKqKp": {
+    "error": "TokenAccountNotFoundError",
+    "timestamp": "2025-07-23T18:55:46.542Z"
+  },
+  "0x7c37ea242d4211323230a229d0c0b1b9f64ddd81": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:23:44.895Z"
+  },
+  "0x2f79c66be07D5F7e56c5888B1088eA34B9875BAE": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:24:21.317Z"
+  },
+  "Fw66fc5xMAhniy4ZBdVxEwmBaV51oNNC5JbyyKazam7c": {
+    "error": "failed to get info about account 4XfyH6WoENX7VLsRkC7QaL2GQERWvgZWBVfwp3YdkWsW: Error: 504 Gateway Time-out: <html><body><h1>504 Gateway Time-out</h1>\nThe server didn't respond in time.\n</body></html>\n\n",
+    "timestamp": "2025-07-23T19:29:17.794Z"
+  },
+  "0x03d6D4f0941530A2B339291eaaEcDE73b94af519": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:33:08.827Z"
+  },
+  "6f8deE148nynnSiWshA9vLydEbJGpDeKh5G4PRgjmzG7": {
+    "error": "TokenOwnerOffCurveError",
+    "timestamp": "2025-07-23T19:33:28.301Z"
+  },
+  "0x2a31e4CC8A5A47a6C52497f06216B82E293c19eA": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:33:47.711Z"
+  },
+  "0xF261Fce58c97b818d88aC600a199A849f7bcC761": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:33:52.949Z"
+  },
+  "0xAF3DBf5aB233b039890A34A0a755717Cc5619483": {
+    "error": "Non-base58 character",
+    "timestamp": "2025-07-23T19:36:11.770Z"
+  }
+}
