@@ -3,8 +3,11 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+export type TokenType = 'xnm' | 'xblk';
+
 export interface Config {
   tokenMint: PublicKey;
+  tokenType: TokenType;
   airdropTrackerProgramId: PublicKey;
   rpcEndpoint: string;
   decimals: number;
@@ -28,8 +31,18 @@ export function loadConfig(): Config {
     }
   }
 
+  // Parse token type from env (defaults to 'xnm')
+  const tokenTypeEnv = (process.env.TOKEN_TYPE || 'xnm').toLowerCase();
+  if (tokenTypeEnv !== 'xnm' && tokenTypeEnv !== 'xblk') {
+    throw new Error(
+      `Invalid TOKEN_TYPE: ${tokenTypeEnv}. Must be 'xnm' or 'xblk'`
+    );
+  }
+  const tokenType: TokenType = tokenTypeEnv as TokenType;
+
   return {
     tokenMint: new PublicKey(process.env.TOKEN_MINT!),
+    tokenType,
     airdropTrackerProgramId: new PublicKey(
       process.env.AIRDROP_TRACKER_PROGRAM_ID!
     ),

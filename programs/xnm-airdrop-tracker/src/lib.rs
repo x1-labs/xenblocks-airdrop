@@ -61,7 +61,9 @@ pub mod xnm_airdrop_tracker {
         let record = &mut ctx.accounts.airdrop_record;
         record.sol_wallet = ctx.accounts.sol_wallet.key();
         record.eth_address = eth_address;
-        record.total_airdropped = 0;
+        record.xnm_airdropped = 0;
+        record.xblk_airdropped = 0;
+        record.reserved = [0u64; 6];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
@@ -73,40 +75,68 @@ pub mod xnm_airdrop_tracker {
     }
 
     /// Update an existing airdrop record after a successful transfer
-    pub fn update_record(ctx: Context<UpdateRecord>, amount_to_add: u64) -> Result<()> {
+    /// token_type: 0 = XNM, 1 = XBLK
+    pub fn update_record(
+        ctx: Context<UpdateRecord>,
+        token_type: u8,
+        amount_to_add: u64,
+    ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
 
-        record.total_airdropped = record
-            .total_airdropped
-            .checked_add(amount_to_add)
-            .ok_or(ErrorCode::Overflow)?;
+        match token_type {
+            0 => {
+                record.xnm_airdropped = record
+                    .xnm_airdropped
+                    .checked_add(amount_to_add)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
+            1 => {
+                record.xblk_airdropped = record
+                    .xblk_airdropped
+                    .checked_add(amount_to_add)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
+            _ => return Err(ErrorCode::InvalidTokenType.into()),
+        }
         record.last_updated = Clock::get()?.unix_timestamp;
 
         msg!(
-            "Updated airdrop record: wallet={}, new_total={}, added={}",
+            "Updated airdrop record: wallet={}, token_type={}, added={}",
             record.sol_wallet,
-            record.total_airdropped,
+            token_type,
             amount_to_add
         );
         Ok(())
     }
 
     /// Initialize a record and immediately update it (for new wallets during airdrop)
+    /// token_type: 0 = XNM, 1 = XBLK
     pub fn initialize_and_update(
         ctx: Context<InitializeRecord>,
         eth_address: [u8; 42],
+        token_type: u8,
         initial_amount: u64,
     ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
         record.sol_wallet = ctx.accounts.sol_wallet.key();
         record.eth_address = eth_address;
-        record.total_airdropped = initial_amount;
+        record.xnm_airdropped = 0;
+        record.xblk_airdropped = 0;
+        record.reserved = [0u64; 6];
+
+        match token_type {
+            0 => record.xnm_airdropped = initial_amount,
+            1 => record.xblk_airdropped = initial_amount,
+            _ => return Err(ErrorCode::InvalidTokenType.into()),
+        }
+
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
         msg!(
-            "Initialized and updated airdrop record: wallet={}, amount={}",
+            "Initialized and updated airdrop record: wallet={}, token_type={}, amount={}",
             ctx.accounts.sol_wallet.key(),
+            token_type,
             initial_amount
         );
         Ok(())
@@ -284,8 +314,12 @@ pub struct AirdropRecord {
     pub sol_wallet: Pubkey, // 32 bytes
     /// The associated ETH address (as UTF-8 bytes, e.g., "0x1234...")
     pub eth_address: [u8; 42], // 42 bytes
-    /// Cumulative amount airdropped (in token base units, 9 decimals)
-    pub total_airdropped: u64, // 8 bytes
+    /// Cumulative XNM amount airdropped (in token base units, 9 decimals)
+    pub xnm_airdropped: u64, // 8 bytes
+    /// Cumulative XBLK amount airdropped (in token base units, 9 decimals)
+    pub xblk_airdropped: u64, // 8 bytes
+    /// Reserved space for future tokens (8 bytes each * 6 = 48 bytes)
+    pub reserved: [u64; 6], // 48 bytes
     /// Unix timestamp of last update
     pub last_updated: i64, // 8 bytes
     /// PDA bump seed for derivation
@@ -298,4 +332,6 @@ pub enum ErrorCode {
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
+    #[msg("Invalid token type: must be 0 (XNM) or 1 (XBLK)")]
+    InvalidTokenType,
 }

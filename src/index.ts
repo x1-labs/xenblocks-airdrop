@@ -8,6 +8,7 @@ async function main(): Promise<void> {
     const config = loadConfig();
 
     console.log('🔧 Configuration loaded:');
+    console.log(`   Token: ${config.tokenType.toUpperCase()}`);
     console.log(`   Token Mint: ${config.tokenMint.toString()}`);
     console.log(`   RPC Endpoint: ${config.rpcEndpoint}`);
     console.log(`   Dry Run: ${config.dryRun}`);

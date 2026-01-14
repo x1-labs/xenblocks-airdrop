@@ -2,6 +2,7 @@ export interface Miner {
   account: string; // ETH address
   solAddress: string; // Solana wallet address
   xnm: string; // XNM amount from API (string, possibly scientific notation)
+  xblk: string; // XBLK amount from API (string, possibly scientific notation)
 }
 
 export interface DeltaResult {

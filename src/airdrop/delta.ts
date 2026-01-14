@@ -1,5 +1,13 @@
 import { Miner, DeltaResult } from './types.js';
 import { convertApiAmountToTokenAmount } from '../utils/format.js';
+import { TokenType } from '../config.js';
+
+/**
+ * Get the API amount for the specified token type from a miner
+ */
+function getTokenAmount(miner: Miner, tokenType: TokenType): string {
+  return tokenType === 'xnm' ? miner.xnm : miner.xblk;
+}
 
 /**
  * Calculate delta amounts for miners based on previous snapshots
@@ -11,12 +19,14 @@ import { convertApiAmountToTokenAmount } from '../utils/format.js';
  */
 export function calculateDeltas(
   currentMiners: Miner[],
-  lastSnapshot: Map<string, bigint>
+  lastSnapshot: Map<string, bigint>,
+  tokenType: TokenType = 'xnm'
 ): DeltaResult[] {
   const results: DeltaResult[] = [];
 
   for (const miner of currentMiners) {
-    const currentAmount = convertApiAmountToTokenAmount(miner.xnm);
+    const apiAmount = getTokenAmount(miner, tokenType);
+    const currentAmount = convertApiAmountToTokenAmount(apiAmount);
     const previousAmount = lastSnapshot.get(miner.solAddress) ?? 0n;
     const deltaAmount = currentAmount - previousAmount;
 
@@ -25,7 +35,7 @@ export function calculateDeltas(
       results.push({
         walletAddress: miner.solAddress,
         ethAddress: miner.account,
-        apiAmount: miner.xnm,
+        apiAmount,
         currentAmount,
         previousAmount,
         deltaAmount,
