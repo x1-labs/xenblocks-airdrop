@@ -15,11 +15,6 @@ import {
   MultiTokenTransferItem,
 } from '../solana/transfer.js';
 import {
-  logTransaction,
-  ensureAirdropRunExists,
-  getOrCreateWalletPair,
-} from '../db/queries.js';
-import {
   fetchAllMultiTokenSnapshots,
   makeSnapshotKey,
   createOnChainRun,
@@ -191,9 +186,6 @@ export async function executeAirdrop(
   );
   logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
 
-  // Ensure run exists in PostgreSQL for transaction logging
-  await ensureAirdropRunExists(runId);
-
   // Fetch miners from API once
   const miners = await fetchMiners(config.apiEndpoint);
   logger.info({ totalMiners: miners.length }, 'Total miners loaded');
@@ -249,7 +241,6 @@ export async function executeAirdrop(
     config,
     xnmConfig,
     xblkConfig,
-    runId,
     deltas,
     snapshots
   );
@@ -295,7 +286,6 @@ async function processSingleRecipient(
   config: Config,
   xnmConfig: TokenConfig,
   xblkConfig: TokenConfig,
-  runId: bigint,
   delta: MultiTokenDelta,
   hasExistingRecord: boolean
 ): Promise<MultiTokenAirdropResult> {
@@ -408,10 +398,6 @@ async function processSingleRecipient(
       xblkDelta: xblkFormatted,
     }, 'Transfer successful');
 
-    // Log to database
-    const walletPairId = await getOrCreateWalletPair(delta.walletAddress, delta.ethAddress);
-    await logTransaction(runId, walletPairId, delta.xnmDelta + delta.xblkDelta, result.txSignature!, 'success');
-
     return {
       walletAddress: delta.walletAddress,
       ethAddress: delta.ethAddress,
@@ -428,9 +414,6 @@ async function processSingleRecipient(
       xblkDelta: xblkFormatted,
       error: result.errorMessage,
     }, 'Transfer failed');
-
-    const walletPairId = await getOrCreateWalletPair(delta.walletAddress, delta.ethAddress);
-    await logTransaction(runId, walletPairId, delta.xnmDelta + delta.xblkDelta, '', 'failed', result.errorMessage);
 
     return {
       walletAddress: delta.walletAddress,
@@ -453,7 +436,6 @@ async function processMultiTokenAirdrops(
   config: Config,
   xnmConfig: TokenConfig,
   xblkConfig: TokenConfig,
-  runId: bigint,
   deltas: MultiTokenDelta[],
   snapshots: Map<string, OnChainSnapshot>
 ): Promise<MultiTokenAirdropResult[]> {
@@ -515,7 +497,6 @@ async function processMultiTokenAirdrops(
         config,
         xnmConfig,
         xblkConfig,
-        runId,
         delta,
         hasExistingRecord
       );

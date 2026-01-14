@@ -1,7 +1,6 @@
 import { loadConfig } from './config.js';
 import { getConnection, getPayer } from './solana/connection.js';
 import { executeAirdrop } from './airdrop/executor.js';
-import { disconnectPrisma } from './db/client.js';
 import logger from './utils/logger.js';
 
 async function main(): Promise<void> {
@@ -35,8 +34,6 @@ async function main(): Promise<void> {
   } catch (error) {
     logger.fatal({ error }, 'Airdrop failed');
     process.exit(1);
-  } finally {
-    await disconnectPrisma();
   }
 }
 
