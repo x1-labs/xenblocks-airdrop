@@ -18,6 +18,7 @@ import {
   getGlobalState,
 } from '../onchain/client.js';
 import { TOKEN_TYPE, TokenTypeValue } from '../onchain/types.js';
+import logger from '../utils/logger.js';
 
 /**
  * Convert config TokenType to on-chain TokenTypeValue
@@ -30,7 +31,8 @@ function toOnChainTokenType(tokenType: TokenType): TokenTypeValue {
  * Fetch miners from the API
  */
 export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
-  console.log('📡 Fetching miner data from API...');
+  logger.info('Fetching miner data from API...');
+  logger.debug({ apiEndpoint }, 'API endpoint');
   const response = await fetch(apiEndpoint);
   const data = (await response.json()) as { miners: Miner[] };
 
@@ -38,7 +40,7 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
     (miner) => miner.solAddress && miner.xnm
   );
 
-  console.log(`✅ Found ${validMiners.length} valid miners`);
+  logger.info({ count: validMiners.length }, 'Found valid miners');
   return validMiners;
 }
 
@@ -51,11 +53,12 @@ export async function executeAirdrop(
   config: Config
 ): Promise<void> {
   const tokenNames = config.tokens.map((t) => t.type.toUpperCase()).join(', ');
-  console.log(`\n🎯 Multi-Token Airdrop Starting...`);
-  console.log(`🪙 Tokens: ${tokenNames}`);
-  console.log(`🔧 Dry Run: ${config.dryRun}`);
-  console.log(
-    `🔗 Tracker Program: ${config.airdropTrackerProgramId.toString()}`
+  logger.info('Multi-Token Airdrop Starting...');
+  logger.info({ tokens: tokenNames }, 'Tokens to process');
+  logger.info({ dryRun: config.dryRun }, 'Dry run mode');
+  logger.debug(
+    { programId: config.airdropTrackerProgramId.toString() },
+    'Tracker Program'
   );
 
   // Check if global state is initialized
@@ -64,31 +67,31 @@ export async function executeAirdrop(
     config.airdropTrackerProgramId
   );
   if (!globalState) {
-    console.log('⚙️  Initializing on-chain global state...');
+    logger.info('Initializing on-chain global state...');
     const initSig = await initializeState(
       connection,
       config.airdropTrackerProgramId,
       payer
     );
-    console.log(`   Initialized: ${initSig}`);
+    logger.debug({ signature: initSig }, 'Global state initialized');
   }
 
   // Create on-chain airdrop run
-  console.log('📝 Creating on-chain airdrop run...');
+  logger.info('Creating on-chain airdrop run...');
   const { runId, signature: runSig } = await createOnChainRun(
     connection,
     config.airdropTrackerProgramId,
     payer,
     config.dryRun
   );
-  console.log(`   Created run #${runId} | Tx: ${runSig}`);
+  logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
 
   // Ensure run exists in PostgreSQL for transaction logging
   await ensureAirdropRunExists(runId);
 
   // Fetch miners from API once (used for all tokens)
   const miners = await fetchMiners(config.apiEndpoint);
-  console.log(`📊 Total miners: ${miners.length}`);
+  logger.info({ totalMiners: miners.length }, 'Total miners loaded');
 
   // Process each token
   for (const tokenConfig of config.tokens) {
@@ -102,7 +105,7 @@ export async function executeAirdrop(
     );
   }
 
-  console.log('\n🎉 All token airdrops completed!');
+  logger.info('All token airdrops completed!');
 }
 
 /**
@@ -119,17 +122,19 @@ async function executeTokenAirdrop(
   const tokenName = tokenConfig.type.toUpperCase();
   const onChainTokenType = toOnChainTokenType(tokenConfig.type);
 
-  console.log(`\n${'='.repeat(50)}`);
-  console.log(`🪙 Processing ${tokenName} Airdrop`);
-  console.log(`   Mint: ${tokenConfig.mint.toString()}`);
-  console.log(`${'='.repeat(50)}`);
+  logger.info('='.repeat(50));
+  logger.info({ token: tokenName }, 'Processing token airdrop');
+  logger.debug({ mint: tokenConfig.mint.toString() }, 'Token mint');
 
   // Get payer balance for this token
   const payerInfo = await getPayerBalance(connection, payer, tokenConfig);
-  console.log(`💰 Payer balance: ${payerInfo.formatted} ${tokenName}`);
+  logger.info(
+    { balance: payerInfo.formatted, token: tokenName },
+    'Payer balance'
+  );
 
   // Fetch on-chain snapshots and calculate deltas
-  console.log('📈 Fetching on-chain snapshots...');
+  logger.info('Fetching on-chain snapshots...');
   const minerData = miners.map((m) => ({
     solAddress: m.solAddress,
     ethAddress: m.account,
@@ -140,13 +145,20 @@ async function executeTokenAirdrop(
     minerData,
     onChainTokenType
   );
-  console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
+  logger.info(
+    { existingRecords: lastSnapshot.size },
+    'Found existing on-chain records'
+  );
   const deltas = calculateDeltas(miners, lastSnapshot, tokenConfig.type);
 
   const totalNeeded = calculateTotalAmount(deltas);
-  console.log(`💸 Recipients with positive delta: ${deltas.length}`);
-  console.log(
-    `💸 Total needed: ${formatTokenAmount(totalNeeded, tokenConfig.decimals)} ${tokenName}`
+  logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
+  logger.info(
+    {
+      totalNeeded: formatTokenAmount(totalNeeded, tokenConfig.decimals),
+      token: tokenName,
+    },
+    'Total tokens needed'
   );
 
   // Check balance
@@ -155,17 +167,18 @@ async function executeTokenAirdrop(
       totalNeeded - payerInfo.balance,
       tokenConfig.decimals
     );
-    console.log(
-      `\n⚠️  WARNING: Insufficient balance! Need ${shortfall} more ${tokenName}`
+    logger.warn(
+      { shortfall, token: tokenName },
+      'Insufficient balance for airdrop'
     );
     if (!config.dryRun) {
-      console.log(`❌ Skipping ${tokenName} due to insufficient funds`);
+      logger.error({ token: tokenName }, 'Skipping token due to insufficient funds');
       return;
     }
   }
 
   // Execute transfers
-  console.log(`🚀 Starting ${tokenName} airdrop execution...`);
+  logger.info({ token: tokenName }, 'Starting airdrop execution...');
   const results = await processAirdrops(
     connection,
     payer,
@@ -183,7 +196,7 @@ async function executeTokenAirdrop(
     .reduce((sum, r) => sum + r.amount, 0n);
 
   if (!config.dryRun && successCount > 0) {
-    console.log('📝 Updating on-chain run totals...');
+    logger.info('Updating on-chain run totals...');
     const updateSig = await updateOnChainRunTotals(
       connection,
       config.airdropTrackerProgramId,
@@ -192,15 +205,18 @@ async function executeTokenAirdrop(
       successCount,
       totalSent
     );
-    console.log(`   Updated: ${updateSig}`);
+    logger.debug({ signature: updateSig }, 'Run totals updated');
   }
 
   // Summary for this token
-  console.log(`\n✅ ${tokenName} Airdrop Summary:`);
-  console.log(`   Successful: ${successCount}`);
-  console.log(`   Failed: ${results.length - successCount}`);
-  console.log(
-    `   Total sent: ${formatTokenAmount(totalSent, tokenConfig.decimals)} ${tokenName}`
+  logger.info(
+    {
+      token: tokenName,
+      successful: successCount,
+      failed: results.length - successCount,
+      totalSent: formatTokenAmount(totalSent, tokenConfig.decimals),
+    },
+    'Token airdrop summary'
   );
 }
 
@@ -220,7 +236,10 @@ async function processAirdrops(
   const tokenName = tokenConfig.type.toUpperCase();
 
   for (const delta of deltas) {
-    const humanAmount = formatTokenAmount(delta.deltaAmount, tokenConfig.decimals);
+    const humanAmount = formatTokenAmount(
+      delta.deltaAmount,
+      tokenConfig.decimals
+    );
 
     // Get or create wallet pair for logging
     const walletPairId = await getOrCreateWalletPair(
@@ -229,8 +248,13 @@ async function processAirdrops(
     );
 
     if (config.dryRun) {
-      console.log(
-        `🧪 [DRY RUN] Would send ${humanAmount} ${tokenName} to ${delta.walletAddress}`
+      logger.info(
+        {
+          wallet: delta.walletAddress,
+          amount: humanAmount,
+          token: tokenName,
+        },
+        '[DRY RUN] Would send tokens'
       );
       results.push({
         walletAddress: delta.walletAddress,
@@ -252,8 +276,14 @@ async function processAirdrops(
     );
 
     if (transferResult.success) {
-      console.log(
-        `✅ ${delta.walletAddress}: ${humanAmount} ${tokenName} | Tx: ${transferResult.txSignature}`
+      logger.info(
+        {
+          wallet: delta.walletAddress,
+          amount: humanAmount,
+          token: tokenName,
+          txSignature: transferResult.txSignature,
+        },
+        'Transfer successful'
       );
 
       // Update on-chain record
@@ -267,10 +297,14 @@ async function processAirdrops(
           onChainTokenType,
           delta.deltaAmount
         );
-        console.log(`   📝 On-chain record updated: ${onchainTx}`);
+        logger.debug({ signature: onchainTx }, 'On-chain record updated');
       } catch (error) {
-        console.error(
-          `   ⚠️  Failed to update on-chain record: ${error instanceof Error ? error.message : 'Unknown error'}`
+        logger.warn(
+          {
+            wallet: delta.walletAddress,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+          'Failed to update on-chain record'
         );
         // Continue anyway - the token transfer succeeded
       }
@@ -292,8 +326,12 @@ async function processAirdrops(
         status: 'success',
       });
     } else {
-      console.error(
-        `❌ ${delta.walletAddress}: ${transferResult.errorMessage}`
+      logger.error(
+        {
+          wallet: delta.walletAddress,
+          error: transferResult.errorMessage,
+        },
+        'Transfer failed'
       );
       await logTransaction(
         runId,
