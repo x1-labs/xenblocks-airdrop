@@ -4,6 +4,7 @@ import {
   PublicKey,
   sendAndConfirmTransaction,
   Transaction,
+  TransactionInstruction,
 } from '@solana/web3.js';
 import {
   getOrCreateAssociatedTokenAccount,
@@ -19,6 +20,19 @@ export interface TransferResult {
   success: boolean;
   txSignature?: string;
   errorMessage?: string;
+}
+
+export interface BatchTransferItem {
+  recipientAddress: string;
+  ethAddress: string;
+  amount: bigint;
+}
+
+export interface BatchTransferResult {
+  success: boolean;
+  txSignature?: string;
+  errorMessage?: string;
+  items: BatchTransferItem[];
 }
 
 /**
@@ -137,6 +151,109 @@ export async function transferTokens(
     return {
       success: false,
       errorMessage,
+    };
+  }
+}
+
+/**
+ * Transfer tokens to multiple recipients in a single transaction
+ * Also includes on-chain record update instructions
+ */
+export async function batchTransferTokens(
+  connection: Connection,
+  payer: Keypair,
+  tokenConfig: TokenConfig,
+  items: BatchTransferItem[],
+  recordUpdateInstructions: TransactionInstruction[]
+): Promise<BatchTransferResult> {
+  try {
+    if (items.length === 0) {
+      return {
+        success: true,
+        items: [],
+      };
+    }
+
+    // Get payer's token account
+    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      tokenConfig.mint,
+      payer.publicKey,
+      false,
+      undefined,
+      undefined,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    // Get all recipient ATAs and check existence in batch
+    const recipients = items.map((item) => new PublicKey(item.recipientAddress));
+    const ataAddresses = recipients.map((recipient) =>
+      getAssociatedTokenAddressSync(
+        tokenConfig.mint,
+        recipient,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+
+    // Batch check which accounts exist
+    const accountInfos = await connection.getMultipleAccountsInfo(ataAddresses);
+
+    const transaction = new Transaction();
+
+    // Add ATA creation instructions for accounts that don't exist
+    for (let i = 0; i < items.length; i++) {
+      if (!accountInfos[i]) {
+        const createATAInstruction = createAssociatedTokenAccountInstruction(
+          payer.publicKey,
+          ataAddresses[i],
+          recipients[i],
+          tokenConfig.mint,
+          TOKEN_2022_PROGRAM_ID
+        );
+        transaction.add(createATAInstruction);
+      }
+    }
+
+    // Add transfer instructions
+    for (let i = 0; i < items.length; i++) {
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount.address,
+        ataAddresses[i],
+        payer.publicKey,
+        items[i].amount,
+        [],
+        TOKEN_2022_PROGRAM_ID
+      );
+      transaction.add(transferInstruction);
+    }
+
+    // Add on-chain record update instructions
+    for (const instruction of recordUpdateInstructions) {
+      transaction.add(instruction);
+    }
+
+    // Send transaction
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [payer],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      success: true,
+      txSignature: signature,
+      items,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      errorMessage,
+      items,
     };
   }
 }
