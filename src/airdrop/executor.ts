@@ -191,7 +191,7 @@ async function executeTokenAirdrop(
   logger.debug({ mint: tokenConfig.mint.toString() }, 'Token mint');
 
   // Get payer balance for this token
-  const payerInfo = await getPayerBalance(connection, payer, tokenConfig);
+  const payerInfo = await getPayerBalance(connection, payer, tokenConfig, config.tokenProgramId);
   logger.info(
     { balance: payerInfo.formatted, token: tokenName },
     'Payer balance'
@@ -248,9 +248,9 @@ async function executeTokenAirdrop(
         connection,
         payer,
         tokenConfig,
+        config.tokenProgramId,
         deltas.length,
         config.batchSize,
-        config.batchSize, // record instructions per batch
         config.feeBufferMultiplier
       );
       const estimatedFeeFormatted = (
@@ -284,6 +284,7 @@ async function executeTokenAirdrop(
     payer,
     config,
     tokenConfig,
+    config.tokenProgramId,
     runId,
     deltas,
     onChainTokenType,
@@ -329,6 +330,7 @@ async function processBatchedAirdrops(
   payer: Keypair,
   config: Config,
   tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey,
   runId: bigint,
   deltas: DeltaResult[],
   onChainTokenType: TokenTypeValue,
@@ -426,6 +428,7 @@ async function processBatchedAirdrops(
       connection,
       payer,
       tokenConfig,
+      tokenProgramId,
       transferItems,
       recordInstructions,
       config.feeBufferMultiplier

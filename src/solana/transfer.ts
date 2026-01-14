@@ -49,7 +49,8 @@ export interface FeeEstimate {
 export async function getPayerBalance(
   connection: Connection,
   payer: Keypair,
-  tokenConfig: TokenConfig
+  tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey
 ): Promise<{ balance: bigint; formatted: string; account: PublicKey }> {
   const payerTokenAccount = await getOrCreateAssociatedTokenAccount(
     connection,
@@ -59,7 +60,7 @@ export async function getPayerBalance(
     false,
     undefined,
     undefined,
-    config.tokenProgramId
+    tokenProgramId
   );
 
   const balanceResponse = await connection.getTokenAccountBalance(
@@ -134,6 +135,7 @@ export async function transferTokens(
   connection: Connection,
   payer: Keypair,
   tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey,
   recipientAddress: string,
   amount: bigint
 ): Promise<TransferResult> {
@@ -149,7 +151,7 @@ export async function transferTokens(
       false,
       undefined,
       undefined,
-      config.tokenProgramId
+      tokenProgramId
     );
 
     // Get the expected ATA address for recipient
@@ -157,7 +159,7 @@ export async function transferTokens(
       tokenConfig.mint,
       recipient,
       false,
-      config.tokenProgramId
+      tokenProgramId
     );
 
     // Check if account exists
@@ -178,7 +180,7 @@ export async function transferTokens(
         ataAddress, // ata
         recipient, // owner
         tokenConfig.mint, // mint
-        config.tokenProgramId
+        tokenProgramId
       );
       transaction.add(createATAInstruction);
     }
@@ -190,7 +192,7 @@ export async function transferTokens(
       payer.publicKey,
       amount,
       [],
-      config.tokenProgramId
+      tokenProgramId
     );
     transaction.add(transferInstruction);
 
@@ -224,6 +226,7 @@ export async function batchTransferTokens(
   connection: Connection,
   payer: Keypair,
   tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey,
   items: BatchTransferItem[],
   recordUpdateInstructions: TransactionInstruction[],
   feeBufferMultiplier: number = 1.2
@@ -245,7 +248,7 @@ export async function batchTransferTokens(
       false,
       undefined,
       undefined,
-      TOKEN_2022_PROGRAM_ID
+      tokenProgramId
     );
 
     // Get all recipient ATAs and check existence in batch
@@ -257,7 +260,7 @@ export async function batchTransferTokens(
         tokenConfig.mint,
         recipient,
         false,
-        TOKEN_2022_PROGRAM_ID
+        tokenProgramId
       )
     );
 
@@ -274,7 +277,7 @@ export async function batchTransferTokens(
           ataAddresses[i],
           recipients[i],
           tokenConfig.mint,
-          TOKEN_2022_PROGRAM_ID
+          tokenProgramId
         );
         transaction.add(createATAInstruction);
       }
@@ -288,7 +291,7 @@ export async function batchTransferTokens(
         payer.publicKey,
         items[i].amount,
         [],
-        TOKEN_2022_PROGRAM_ID
+        tokenProgramId
       );
       transaction.add(transferInstruction);
     }
@@ -362,9 +365,9 @@ export async function estimateTotalFees(
   connection: Connection,
   payer: Keypair,
   tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey,
   totalRecipients: number,
   batchSize: number,
-  recordInstructionsPerBatch: number,
   feeBufferMultiplier: number
 ): Promise<{ totalFee: bigint; perBatchFee: bigint; numBatches: number }> {
   // Create a sample transaction with batchSize transfers to estimate per-batch fee
@@ -379,7 +382,7 @@ export async function estimateTotalFees(
     false,
     undefined,
     undefined,
-    TOKEN_2022_PROGRAM_ID
+    tokenProgramId
   );
 
   // Add sample ATA creation and transfer instructions
@@ -390,7 +393,7 @@ export async function estimateTotalFees(
       tokenConfig.mint,
       payer.publicKey,
       false,
-      TOKEN_2022_PROGRAM_ID
+      tokenProgramId
     );
 
     // Add transfer instruction (ATA creation adds significant cost)
@@ -400,7 +403,7 @@ export async function estimateTotalFees(
       payer.publicKey,
       1n,
       [],
-      TOKEN_2022_PROGRAM_ID
+      tokenProgramId
     );
     sampleTransaction.add(transferInstruction);
   }

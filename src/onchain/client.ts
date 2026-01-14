@@ -15,6 +15,9 @@ import {
 } from './pda.js';
 import {
   AIRDROP_RECORD_OFFSETS,
+  AIRDROP_RECORD_LEGACY_OFFSETS,
+  AIRDROP_RECORD_SIZE,
+  AIRDROP_RECORD_LEGACY_SIZE,
   GLOBAL_STATE_OFFSETS,
   AIRDROP_RUN_OFFSETS,
   AirdropRecord,
@@ -57,8 +60,11 @@ export function deserializeAirdropRun(data: Buffer): OnChainAirdropRun {
 
 /**
  * Deserialize an AirdropRecord from account data
+ * Handles both legacy (99 bytes) and new (155 bytes) schemas
  */
 export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
+  const isLegacySchema = data.length === AIRDROP_RECORD_LEGACY_SIZE;
+
   const solWallet = new PublicKey(
     data.slice(
       AIRDROP_RECORD_OFFSETS.SOL_WALLET,
@@ -73,6 +79,28 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
     )
   );
 
+  if (isLegacySchema) {
+    // Legacy schema: single total_airdropped field, no reserved array
+    const totalAirdropped = data.readBigUInt64LE(
+      AIRDROP_RECORD_LEGACY_OFFSETS.TOTAL_AIRDROPPED
+    );
+    const lastUpdated = data.readBigInt64LE(
+      AIRDROP_RECORD_LEGACY_OFFSETS.LAST_UPDATED
+    );
+    const bump = data.readUInt8(AIRDROP_RECORD_LEGACY_OFFSETS.BUMP);
+
+    return {
+      solWallet,
+      ethAddress,
+      xnmAirdropped: totalAirdropped, // Legacy uses single field, treat as XNM
+      xblkAirdropped: 0n,
+      reserved: [0n, 0n, 0n, 0n, 0n, 0n],
+      lastUpdated,
+      bump,
+    };
+  }
+
+  // New schema with separate XNM/XBLK fields and reserved array
   const xnmAirdropped = data.readBigUInt64LE(
     AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
   );

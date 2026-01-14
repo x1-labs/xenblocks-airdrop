@@ -15,6 +15,7 @@ export interface TokenConfig {
 export interface Config {
   tokens: TokenConfig[];
   airdropTrackerProgramId: PublicKey;
+  tokenProgramId: PublicKey;
   rpcEndpoint: string;
   dryRun: boolean;
   keypairPath: string;
@@ -113,6 +114,7 @@ export function loadConfig(): Config {
     airdropTrackerProgramId: new PublicKey(
       process.env.AIRDROP_TRACKER_PROGRAM_ID!
     ),
+    tokenProgramId,
     rpcEndpoint: process.env.RPC_ENDPOINT!,
     dryRun: process.env.DRY_RUN === 'true',
     keypairPath: process.env.KEYPAIR_PATH!,
