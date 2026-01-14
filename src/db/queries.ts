@@ -3,43 +3,20 @@ import { getPrismaClient } from './client.js';
 const prisma = getPrismaClient();
 
 /**
- * Get or create a wallet record
+ * Get or create a wallet pair record
  */
-export async function getOrCreateWallet(address: string): Promise<number> {
-  const wallet = await prisma.wallet.upsert({
-    where: { address },
-    update: {},
-    create: { address },
-  });
-  return wallet.id;
-}
-
-/**
- * Get or create an ETH address record
- */
-export async function getOrCreateEthAddress(address: string): Promise<number> {
-  const ethAddress = await prisma.ethAddress.upsert({
-    where: { address },
-    update: {},
-    create: { address },
-  });
-  return ethAddress.id;
-}
-
-/**
- * Create or update wallet-eth mapping
- */
-export async function ensureWalletEthMapping(
-  walletId: number,
-  ethAddressId: number
-): Promise<void> {
-  await prisma.walletEthMapping.upsert({
+export async function getOrCreateWalletPair(
+  solAddress: string,
+  ethAddress: string
+): Promise<number> {
+  const walletPair = await prisma.walletPair.upsert({
     where: {
-      walletId_ethAddressId: { walletId, ethAddressId },
+      solAddress_ethAddress: { solAddress, ethAddress },
     },
     update: {},
-    create: { walletId, ethAddressId },
+    create: { solAddress, ethAddress },
   });
+  return walletPair.id;
 }
 
 /**
@@ -61,7 +38,7 @@ export async function ensureAirdropRunExists(
  */
 export async function logTransaction(
   runId: bigint,
-  walletId: number,
+  walletPairId: number,
   amount: bigint,
   txSignature: string,
   status: 'success' | 'failed',
@@ -70,7 +47,7 @@ export async function logTransaction(
   await prisma.airdropTransaction.create({
     data: {
       runId,
-      walletId,
+      walletPairId,
       amount,
       txSignature: status === 'success' ? txSignature : null,
       status,
@@ -80,13 +57,16 @@ export async function logTransaction(
 }
 
 /**
- * Get all successful transactions for a wallet
+ * Get all successful transactions for a Solana wallet
  */
-export async function getWalletTransactions(walletAddress: string) {
+export async function getWalletTransactions(solAddress: string) {
   return prisma.airdropTransaction.findMany({
     where: {
-      wallet: { address: walletAddress },
+      walletPair: { solAddress },
       status: 'success',
+    },
+    include: {
+      walletPair: true,
     },
     orderBy: { createdAt: 'desc' },
   });
