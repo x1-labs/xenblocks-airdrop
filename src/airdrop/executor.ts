@@ -1,4 +1,4 @@
-import { Connection, Keypair } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { Config } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
 import {
@@ -9,15 +9,20 @@ import {
 import { formatTokenAmount } from '../utils/format.js';
 import { transferTokens, getPayerBalance } from '../solana/transfer.js';
 import {
-  createAirdropRun,
-  getLatestSnapshots,
   getOrCreateWallet,
   getOrCreateEthAddress,
   ensureWalletEthMapping,
-  saveSnapshotsBatch,
   logTransaction,
-  updateAirdropRunTotals,
+  ensureAirdropRunExists,
 } from '../db/queries.js';
+import {
+  fetchAllOnChainSnapshots,
+  updateOnChainRecord,
+  createOnChainRun,
+  updateOnChainRunTotals,
+  initializeState,
+  getGlobalState,
+} from '../onchain/client.js';
 
 /**
  * Fetch miners from the API
@@ -46,10 +51,38 @@ export async function executeAirdrop(
   console.log('\n🎯 XNM Airdrop Starting...');
   console.log(`📋 Mode: ${config.mode.toUpperCase()}`);
   console.log(`🔧 Dry Run: ${config.dryRun}`);
+  console.log(
+    `🔗 Tracker Program: ${config.airdropTrackerProgramId.toString()}`
+  );
 
-  // Create airdrop run record
-  const runId = await createAirdropRun(config.mode, config.dryRun);
-  console.log(`📝 Created airdrop run #${runId}`);
+  // Check if global state is initialized
+  const globalState = await getGlobalState(
+    connection,
+    config.airdropTrackerProgramId
+  );
+  if (!globalState) {
+    console.log('⚙️  Initializing on-chain global state...');
+    const initSig = await initializeState(
+      connection,
+      config.airdropTrackerProgramId,
+      payer
+    );
+    console.log(`   Initialized: ${initSig}`);
+  }
+
+  // Create on-chain airdrop run
+  console.log('📝 Creating on-chain airdrop run...');
+  const { runId, signature: runSig } = await createOnChainRun(
+    connection,
+    config.airdropTrackerProgramId,
+    payer,
+    config.mode,
+    config.dryRun
+  );
+  console.log(`   Created run #${runId} | Tx: ${runSig}`);
+
+  // Ensure run exists in PostgreSQL for transaction logging
+  await ensureAirdropRunExists(runId);
 
   // Fetch miners from API
   const miners = await fetchMiners(config.apiEndpoint);
@@ -62,9 +95,17 @@ export async function executeAirdrop(
   // Calculate amounts based on mode
   let deltas: DeltaResult[];
   if (config.mode === 'delta') {
-    console.log('\n📈 Calculating deltas from previous snapshot...');
-    const lastSnapshot = await getLatestSnapshots();
-    console.log(`   Previous snapshot contains ${lastSnapshot.size} wallets`);
+    console.log('\n📈 Fetching on-chain snapshots...');
+    const minerData = miners.map((m) => ({
+      solAddress: m.solAddress,
+      ethAddress: m.account,
+    }));
+    const lastSnapshot = await fetchAllOnChainSnapshots(
+      connection,
+      config.airdropTrackerProgramId,
+      minerData
+    );
+    console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
     deltas = calculateDeltas(miners, lastSnapshot);
   } else {
     console.log('\n📈 Calculating full amounts (ignoring snapshots)...');
@@ -102,17 +143,24 @@ export async function executeAirdrop(
     deltas
   );
 
-  // Save snapshots for all miners (not just deltas)
-  console.log('\n📸 Saving snapshots...');
-  await saveAllSnapshots(runId, miners);
-
-  // Update run totals
+  // Update on-chain run totals
   const successCount = results.filter((r) => r.status === 'success').length;
   const totalSent = results
     .filter((r) => r.status === 'success')
     .reduce((sum, r) => sum + r.amount, 0n);
 
-  await updateAirdropRunTotals(runId, successCount, totalSent);
+  if (!config.dryRun) {
+    console.log('\n📝 Updating on-chain run totals...');
+    const updateSig = await updateOnChainRunTotals(
+      connection,
+      config.airdropTrackerProgramId,
+      payer,
+      runId,
+      successCount,
+      totalSent
+    );
+    console.log(`   Updated: ${updateSig}`);
+  }
 
   // Summary
   console.log('\n🎉 Airdrop completed!');
@@ -130,7 +178,7 @@ async function processAirdrops(
   connection: Connection,
   payer: Keypair,
   config: Config,
-  runId: number,
+  runId: bigint,
   deltas: DeltaResult[]
 ): Promise<AirdropResult[]> {
   const results: AirdropResult[] = [];
@@ -138,7 +186,7 @@ async function processAirdrops(
   for (const delta of deltas) {
     const humanAmount = formatTokenAmount(delta.deltaAmount, config.decimals);
 
-    // Get or create wallet record
+    // Get or create wallet record in DB (for logging)
     const walletId = await getOrCreateWallet(delta.walletAddress);
     const ethAddressId = await getOrCreateEthAddress(delta.ethAddress);
     await ensureWalletEthMapping(walletId, ethAddressId);
@@ -157,7 +205,7 @@ async function processAirdrops(
       continue;
     }
 
-    // Execute transfer
+    // Execute token transfer
     const transferResult = await transferTokens(
       connection,
       payer,
@@ -170,6 +218,26 @@ async function processAirdrops(
       console.log(
         `✅ ${delta.walletAddress}: ${humanAmount} XNM | Tx: ${transferResult.txSignature}`
       );
+
+      // Update on-chain record
+      try {
+        const onchainTx = await updateOnChainRecord(
+          connection,
+          config.airdropTrackerProgramId,
+          payer,
+          new PublicKey(delta.walletAddress),
+          delta.ethAddress,
+          delta.deltaAmount
+        );
+        console.log(`   📝 On-chain record updated: ${onchainTx}`);
+      } catch (error) {
+        console.error(
+          `   ⚠️  Failed to update on-chain record: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+        // Continue anyway - the token transfer succeeded
+      }
+
+      // Log to database
       await logTransaction(
         runId,
         walletId,
@@ -177,6 +245,7 @@ async function processAirdrops(
         transferResult.txSignature!,
         'success'
       );
+
       results.push({
         walletAddress: delta.walletAddress,
         ethAddress: delta.ethAddress,
@@ -208,34 +277,4 @@ async function processAirdrops(
   }
 
   return results;
-}
-
-/**
- * Save snapshots for all miners
- */
-async function saveAllSnapshots(runId: number, miners: Miner[]): Promise<void> {
-  const { convertApiAmountToTokenAmount } = await import('../utils/format.js');
-
-  const batchSize = 100;
-  for (let i = 0; i < miners.length; i += batchSize) {
-    const batch = miners.slice(i, i + batchSize);
-    const snapshotData = await Promise.all(
-      batch.map(async (miner) => {
-        const walletId = await getOrCreateWallet(miner.solAddress);
-        const ethAddressId = await getOrCreateEthAddress(miner.account);
-        await ensureWalletEthMapping(walletId, ethAddressId);
-
-        return {
-          walletId,
-          apiAmount: miner.xnm,
-          tokenAmount: convertApiAmountToTokenAmount(miner.xnm),
-        };
-      })
-    );
-
-    await saveSnapshotsBatch(runId, snapshotData);
-    console.log(
-      `   Saved snapshots ${i + 1} to ${Math.min(i + batchSize, miners.length)}`
-    );
-  }
 }

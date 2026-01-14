@@ -2,18 +2,6 @@ import { getPrismaClient } from './client.js';
 
 const prisma = getPrismaClient();
 
-export interface MinerData {
-  solAddress: string;
-  ethAddress: string;
-  apiAmount: string;
-  tokenAmount: bigint;
-}
-
-export interface SnapshotData {
-  walletAddress: string;
-  tokenAmount: bigint;
-}
-
 /**
  * Get or create a wallet record
  */
@@ -55,108 +43,24 @@ export async function ensureWalletEthMapping(
 }
 
 /**
- * Create a new airdrop run
+ * Ensure an airdrop run record exists for logging purposes.
+ * Run data is stored on-chain, this just creates a reference for transaction logs.
  */
-export async function createAirdropRun(
-  runType: 'full' | 'delta',
-  dryRun: boolean
-): Promise<number> {
-  const run = await prisma.airdropRun.create({
-    data: {
-      runType,
-      dryRun,
-    },
-  });
-  return run.id;
-}
-
-/**
- * Update airdrop run totals
- */
-export async function updateAirdropRunTotals(
-  runId: number,
-  totalRecipients: number,
-  totalAmount: bigint
+export async function ensureAirdropRunExists(
+  onChainRunId: bigint
 ): Promise<void> {
-  await prisma.airdropRun.update({
-    where: { id: runId },
-    data: {
-      totalRecipients,
-      totalAmount,
-    },
+  await prisma.airdropRun.upsert({
+    where: { id: onChainRunId },
+    update: {},
+    create: { id: onChainRunId },
   });
 }
 
 /**
- * Get the latest snapshot for each wallet
- */
-export async function getLatestSnapshots(): Promise<Map<string, bigint>> {
-  // Get the most recent snapshot per wallet using a subquery
-  const snapshots = await prisma.$queryRaw<
-    { address: string; tokenAmount: bigint }[]
-  >`
-    SELECT w.address, s.token_amount as "tokenAmount"
-    FROM airdrop_snapshots s
-    INNER JOIN wallets w ON s.wallet_id = w.id
-    WHERE s.id IN (
-      SELECT DISTINCT ON (wallet_id) id
-      FROM airdrop_snapshots
-      ORDER BY wallet_id, created_at DESC
-    )
-  `;
-
-  const snapshotMap = new Map<string, bigint>();
-  for (const snapshot of snapshots) {
-    snapshotMap.set(snapshot.address, BigInt(snapshot.tokenAmount));
-  }
-  return snapshotMap;
-}
-
-/**
- * Save a snapshot for a miner
- */
-export async function saveSnapshot(
-  runId: number,
-  walletId: number,
-  apiAmount: string,
-  tokenAmount: bigint
-): Promise<void> {
-  await prisma.airdropSnapshot.create({
-    data: {
-      runId,
-      walletId,
-      apiAmount,
-      tokenAmount,
-    },
-  });
-}
-
-/**
- * Save snapshots in batch
- */
-export async function saveSnapshotsBatch(
-  runId: number,
-  snapshots: Array<{
-    walletId: number;
-    apiAmount: string;
-    tokenAmount: bigint;
-  }>
-): Promise<void> {
-  await prisma.airdropSnapshot.createMany({
-    data: snapshots.map((s) => ({
-      runId,
-      walletId: s.walletId,
-      apiAmount: s.apiAmount,
-      tokenAmount: s.tokenAmount,
-    })),
-  });
-}
-
-/**
- * Log a successful transaction
+ * Log a transaction (success or failure)
  */
 export async function logTransaction(
-  runId: number,
+  runId: bigint,
   walletId: number,
   amount: bigint,
   txSignature: string,
@@ -189,19 +93,19 @@ export async function getWalletTransactions(walletAddress: string) {
 }
 
 /**
- * Get run statistics
+ * Get run transaction count from PostgreSQL
+ * (Run details are stored on-chain, use getAirdropRun from onchain/client.ts)
  */
-export async function getRunStats(runId: number) {
+export async function getRunTransactionCount(runId: bigint) {
   const run = await prisma.airdropRun.findUnique({
     where: { id: runId },
     include: {
       _count: {
         select: {
           transactions: true,
-          snapshots: true,
         },
       },
     },
   });
-  return run;
+  return run?._count.transactions ?? 0;
 }
