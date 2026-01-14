@@ -7,56 +7,43 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Wallet {
+// Combined wallet pair table (replaces Wallet, EthAddress, WalletEthMapping)
+model WalletPair {
   id           Int                  @id @default(autoincrement())
-  address      String               @unique @db.VarChar(44)
+  solAddress   String               @db.VarChar(44)
+  ethAddress   String               @db.VarChar(42)
   createdAt    DateTime             @default(now())
-  ethMappings  WalletEthMapping[]
   transactions AirdropTransaction[]
 
-  @@index([address])
+  @@unique([solAddress, ethAddress])
+  @@index([solAddress])
+  @@index([ethAddress])
+  @@map("wallet_pair")
 }
 
-model EthAddress {
-  id             Int                @id @default(autoincrement())
-  address        String             @unique @db.VarChar(42)
-  createdAt      DateTime           @default(now())
-  walletMappings WalletEthMapping[]
-
-  @@index([address])
-}
-
-model WalletEthMapping {
-  id           Int        @id @default(autoincrement())
-  walletId     Int
-  ethAddressId Int
-  createdAt    DateTime   @default(now())
-  wallet       Wallet     @relation(fields: [walletId], references: [id])
-  ethAddress   EthAddress @relation(fields: [ethAddressId], references: [id])
-
-  @@unique([walletId, ethAddressId])
-}
-
-// AirdropRun is now primarily stored on-chain.
-// This table stores the on-chain run ID for transaction logging purposes.
+// AirdropRun is stored on-chain. This table stores the on-chain run ID
+// for transaction logging purposes only.
 model AirdropRun {
   id           BigInt                 @id // On-chain run ID (not auto-increment)
   createdAt    DateTime               @default(now())
   transactions AirdropTransaction[]
+
+  @@map("airdrop_run")
 }
 
 model AirdropTransaction {
   id           Int        @id @default(autoincrement())
   runId        BigInt
-  walletId     Int
+  walletPairId Int
   amount       BigInt
   txSignature  String?    @db.VarChar(88)
   status       String     @db.VarChar(10)
   errorMessage String?
   createdAt    DateTime   @default(now())
   run          AirdropRun @relation(fields: [runId], references: [id])
-  wallet       Wallet     @relation(fields: [walletId], references: [id])
+  walletPair   WalletPair @relation(fields: [walletPairId], references: [id])
 
-  @@index([walletId])
+  @@index([walletPairId])
   @@index([runId])
+  @@map("airdrop_transaction")
 }

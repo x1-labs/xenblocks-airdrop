@@ -9,11 +9,9 @@ import {
 import { formatTokenAmount } from '../utils/format.js';
 import { transferTokens, getPayerBalance } from '../solana/transfer.js';
 import {
-  getOrCreateWallet,
-  getOrCreateEthAddress,
-  ensureWalletEthMapping,
   logTransaction,
   ensureAirdropRunExists,
+  getOrCreateWalletPair,
 } from '../db/queries.js';
 import {
   fetchAllOnChainSnapshots,
@@ -186,10 +184,11 @@ async function processAirdrops(
   for (const delta of deltas) {
     const humanAmount = formatTokenAmount(delta.deltaAmount, config.decimals);
 
-    // Get or create wallet record in DB (for logging)
-    const walletId = await getOrCreateWallet(delta.walletAddress);
-    const ethAddressId = await getOrCreateEthAddress(delta.ethAddress);
-    await ensureWalletEthMapping(walletId, ethAddressId);
+    // Get or create wallet pair for logging
+    const walletPairId = await getOrCreateWalletPair(
+      delta.walletAddress,
+      delta.ethAddress
+    );
 
     if (config.dryRun) {
       console.log(
@@ -240,7 +239,7 @@ async function processAirdrops(
       // Log to database
       await logTransaction(
         runId,
-        walletId,
+        walletPairId,
         delta.deltaAmount,
         transferResult.txSignature!,
         'success'
@@ -259,7 +258,7 @@ async function processAirdrops(
       );
       await logTransaction(
         runId,
-        walletId,
+        walletPairId,
         delta.deltaAmount,
         '',
         'failed',
