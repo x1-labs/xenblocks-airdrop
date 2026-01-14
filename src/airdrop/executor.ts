@@ -1,5 +1,5 @@
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { Config, TokenType } from '../config.js';
+import { Config, TokenConfig, TokenType } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
 import { calculateDeltas, calculateTotalAmount } from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
@@ -43,18 +43,16 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
 }
 
 /**
- * Execute the airdrop
+ * Execute airdrop for all configured tokens
  */
 export async function executeAirdrop(
   connection: Connection,
   payer: Keypair,
   config: Config
 ): Promise<void> {
-  const tokenName = config.tokenType.toUpperCase();
-  const onChainTokenType = toOnChainTokenType(config.tokenType);
-
-  console.log(`\n🎯 ${tokenName} Airdrop Starting...`);
-  console.log(`🪙 Token: ${tokenName}`);
+  const tokenNames = config.tokens.map((t) => t.type.toUpperCase()).join(', ');
+  console.log(`\n🎯 Multi-Token Airdrop Starting...`);
+  console.log(`🪙 Tokens: ${tokenNames}`);
   console.log(`🔧 Dry Run: ${config.dryRun}`);
   console.log(
     `🔗 Tracker Program: ${config.airdropTrackerProgramId.toString()}`
@@ -88,16 +86,50 @@ export async function executeAirdrop(
   // Ensure run exists in PostgreSQL for transaction logging
   await ensureAirdropRunExists(runId);
 
-  // Fetch miners from API
+  // Fetch miners from API once (used for all tokens)
   const miners = await fetchMiners(config.apiEndpoint);
-
-  // Get payer balance
-  const payerInfo = await getPayerBalance(connection, payer, config);
-  console.log(`\n💰 Payer balance: ${payerInfo.formatted} ${tokenName}`);
   console.log(`📊 Total miners: ${miners.length}`);
 
+  // Process each token
+  for (const tokenConfig of config.tokens) {
+    await executeTokenAirdrop(
+      connection,
+      payer,
+      config,
+      tokenConfig,
+      runId,
+      miners
+    );
+  }
+
+  console.log('\n🎉 All token airdrops completed!');
+}
+
+/**
+ * Execute airdrop for a single token type
+ */
+async function executeTokenAirdrop(
+  connection: Connection,
+  payer: Keypair,
+  config: Config,
+  tokenConfig: TokenConfig,
+  runId: bigint,
+  miners: Miner[]
+): Promise<void> {
+  const tokenName = tokenConfig.type.toUpperCase();
+  const onChainTokenType = toOnChainTokenType(tokenConfig.type);
+
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`🪙 Processing ${tokenName} Airdrop`);
+  console.log(`   Mint: ${tokenConfig.mint.toString()}`);
+  console.log(`${'='.repeat(50)}`);
+
+  // Get payer balance for this token
+  const payerInfo = await getPayerBalance(connection, payer, tokenConfig);
+  console.log(`💰 Payer balance: ${payerInfo.formatted} ${tokenName}`);
+
   // Fetch on-chain snapshots and calculate deltas
-  console.log('\n📈 Fetching on-chain snapshots...');
+  console.log('📈 Fetching on-chain snapshots...');
   const minerData = miners.map((m) => ({
     solAddress: m.solAddress,
     ethAddress: m.account,
@@ -109,35 +141,36 @@ export async function executeAirdrop(
     onChainTokenType
   );
   console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
-  const deltas = calculateDeltas(miners, lastSnapshot, config.tokenType);
+  const deltas = calculateDeltas(miners, lastSnapshot, tokenConfig.type);
 
   const totalNeeded = calculateTotalAmount(deltas);
   console.log(`💸 Recipients with positive delta: ${deltas.length}`);
   console.log(
-    `💸 Total needed: ${formatTokenAmount(totalNeeded, config.decimals)} ${tokenName}`
+    `💸 Total needed: ${formatTokenAmount(totalNeeded, tokenConfig.decimals)} ${tokenName}`
   );
 
   // Check balance
   if (totalNeeded > payerInfo.balance) {
     const shortfall = formatTokenAmount(
       totalNeeded - payerInfo.balance,
-      config.decimals
+      tokenConfig.decimals
     );
     console.log(
       `\n⚠️  WARNING: Insufficient balance! Need ${shortfall} more ${tokenName}`
     );
     if (!config.dryRun) {
-      console.log('❌ Stopping execution due to insufficient funds');
+      console.log(`❌ Skipping ${tokenName} due to insufficient funds`);
       return;
     }
   }
 
   // Execute transfers
-  console.log('\n🚀 Starting airdrop execution...');
+  console.log(`🚀 Starting ${tokenName} airdrop execution...`);
   const results = await processAirdrops(
     connection,
     payer,
     config,
+    tokenConfig,
     runId,
     deltas,
     onChainTokenType
@@ -149,8 +182,8 @@ export async function executeAirdrop(
     .filter((r) => r.status === 'success')
     .reduce((sum, r) => sum + r.amount, 0n);
 
-  if (!config.dryRun) {
-    console.log('\n📝 Updating on-chain run totals...');
+  if (!config.dryRun && successCount > 0) {
+    console.log('📝 Updating on-chain run totals...');
     const updateSig = await updateOnChainRunTotals(
       connection,
       config.airdropTrackerProgramId,
@@ -162,12 +195,12 @@ export async function executeAirdrop(
     console.log(`   Updated: ${updateSig}`);
   }
 
-  // Summary
-  console.log('\n🎉 Airdrop completed!');
+  // Summary for this token
+  console.log(`\n✅ ${tokenName} Airdrop Summary:`);
   console.log(`   Successful: ${successCount}`);
   console.log(`   Failed: ${results.length - successCount}`);
   console.log(
-    `   Total sent: ${formatTokenAmount(totalSent, config.decimals)} ${tokenName}`
+    `   Total sent: ${formatTokenAmount(totalSent, tokenConfig.decimals)} ${tokenName}`
   );
 }
 
@@ -178,15 +211,16 @@ async function processAirdrops(
   connection: Connection,
   payer: Keypair,
   config: Config,
+  tokenConfig: TokenConfig,
   runId: bigint,
   deltas: DeltaResult[],
   onChainTokenType: TokenTypeValue
 ): Promise<AirdropResult[]> {
   const results: AirdropResult[] = [];
-  const tokenName = config.tokenType.toUpperCase();
+  const tokenName = tokenConfig.type.toUpperCase();
 
   for (const delta of deltas) {
-    const humanAmount = formatTokenAmount(delta.deltaAmount, config.decimals);
+    const humanAmount = formatTokenAmount(delta.deltaAmount, tokenConfig.decimals);
 
     // Get or create wallet pair for logging
     const walletPairId = await getOrCreateWalletPair(
@@ -212,7 +246,7 @@ async function processAirdrops(
     const transferResult = await transferTokens(
       connection,
       payer,
-      config,
+      tokenConfig,
       delta.walletAddress,
       delta.deltaAmount
     );
