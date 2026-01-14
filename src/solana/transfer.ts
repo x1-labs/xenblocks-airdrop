@@ -11,7 +11,6 @@ import {
 import {
   getOrCreateAssociatedTokenAccount,
   createTransferInstruction,
-  TOKEN_2022_PROGRAM_ID,
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
@@ -60,7 +59,7 @@ export async function getPayerBalance(
     false,
     undefined,
     undefined,
-    TOKEN_2022_PROGRAM_ID
+    config.tokenProgramId
   );
 
   const balanceResponse = await connection.getTokenAccountBalance(
@@ -150,7 +149,7 @@ export async function transferTokens(
       false,
       undefined,
       undefined,
-      TOKEN_2022_PROGRAM_ID
+      config.tokenProgramId
     );
 
     // Get the expected ATA address for recipient
@@ -158,7 +157,7 @@ export async function transferTokens(
       tokenConfig.mint,
       recipient,
       false,
-      TOKEN_2022_PROGRAM_ID
+      config.tokenProgramId
     );
 
     // Check if account exists
@@ -179,7 +178,7 @@ export async function transferTokens(
         ataAddress, // ata
         recipient, // owner
         tokenConfig.mint, // mint
-        TOKEN_2022_PROGRAM_ID
+        config.tokenProgramId
       );
       transaction.add(createATAInstruction);
     }
@@ -191,7 +190,7 @@ export async function transferTokens(
       payer.publicKey,
       amount,
       [],
-      TOKEN_2022_PROGRAM_ID
+      config.tokenProgramId
     );
     transaction.add(transferInstruction);
 

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("Bsh6Bua2msqhcwB5E2ZmASmpXuEB2ZxEZE18VRwH8YTw");
 
 #[program]
 pub mod xnm_airdrop_tracker {

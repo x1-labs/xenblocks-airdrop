@@ -257,7 +257,7 @@ export function createCreateRunInstruction(
   const [airdropRun] = deriveAirdropRunPDA(programId, nextRunId);
 
   // Anchor discriminator for "create_run"
-  const discriminator = Buffer.from([255, 129, 108, 228, 110, 1, 42, 82]);
+  const discriminator = Buffer.from([195, 241, 245, 139, 101, 109, 209, 237]);
 
   const data = Buffer.alloc(discriminator.length + 1);
   discriminator.copy(data, 0);
@@ -289,7 +289,7 @@ export function createUpdateRunTotalsInstruction(
   const [airdropRun] = deriveAirdropRunPDA(programId, runId);
 
   // Anchor discriminator for "update_run_totals"
-  const discriminator = Buffer.from([77, 157, 42, 195, 10, 126, 39, 175]);
+  const discriminator = Buffer.from([38, 24, 28, 212, 47, 29, 149, 65]);
 
   const data = Buffer.alloc(discriminator.length + 4 + 8);
   discriminator.copy(data, 0);
@@ -324,7 +324,7 @@ export function createInitializeRecordInstruction(
   const ethBytes = ethAddressToBytes(ethAddress);
 
   // Anchor instruction discriminator for "initialize_record"
-  const discriminator = Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]);
+  const discriminator = Buffer.from([92, 106, 172, 44, 148, 3, 42, 251]);
 
   const data = Buffer.concat([discriminator, Buffer.from(ethBytes)]);
 
@@ -359,7 +359,7 @@ export function createUpdateRecordInstruction(
   );
 
   // Anchor instruction discriminator for "update_record"
-  const discriminator = Buffer.from([227, 174, 42, 204, 79, 138, 139, 40]);
+  const discriminator = Buffer.from([54, 194, 108, 162, 199, 12, 5, 60]);
 
   // token_type (1 byte) + amount (8 bytes)
   const data = Buffer.alloc(discriminator.length + 1 + 8);
@@ -397,7 +397,7 @@ export function createInitializeAndUpdateInstruction(
   const ethBytes = ethAddressToBytes(ethAddress);
 
   // Anchor instruction discriminator for "initialize_and_update"
-  const discriminator = Buffer.from([116, 248, 142, 52, 137, 89, 223, 195]);
+  const discriminator = Buffer.from([110, 48, 174, 47, 71, 105, 223, 39]);
 
   // eth_address (42 bytes) + token_type (1 byte) + amount (8 bytes)
   const tokenTypeBuffer = Buffer.alloc(1);

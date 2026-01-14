@@ -19,6 +19,7 @@ import {
   logTransaction,
   ensureAirdropRunExists,
   getOrCreateWalletPair,
+  isDatabaseEnabled,
 } from '../db/queries.js';
 import {
   fetchAllOnChainSnapshots,
@@ -40,6 +41,18 @@ function toOnChainTokenType(tokenType: TokenType): TokenTypeValue {
 }
 
 /**
+ * Check if a string is a valid Solana address
+ */
+function isValidSolanaAddress(address: string): boolean {
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch miners from the API
  */
 export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
@@ -49,10 +62,17 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
   const data = (await response.json()) as { miners: Miner[] };
 
   const validMiners = data.miners.filter(
-    (miner) => miner.solAddress && miner.xnm
+    (miner) =>
+      miner.solAddress &&
+      miner.xnm &&
+      isValidSolanaAddress(miner.solAddress)
   );
 
-  logger.info({ count: validMiners.length }, 'Found valid miners');
+  const skipped = data.miners.length - validMiners.length;
+  console.log(`✅ Found ${validMiners.length} valid miners`);
+  if (skipped > 0) {
+    console.log(`   ⚠️  Skipped ${skipped} miners with invalid/missing addresses`);
+  }
   return validMiners;
 }
 

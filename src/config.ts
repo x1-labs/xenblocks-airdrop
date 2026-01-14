@@ -1,4 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -74,7 +75,6 @@ export function loadConfig(): Config {
     'AIRDROP_TRACKER_PROGRAM_ID',
     'RPC_ENDPOINT',
     'KEYPAIR_PATH',
-    'DATABASE_URL',
   ];
 
   for (const varName of requiredVars) {
@@ -102,6 +102,11 @@ export function loadConfig(): Config {
     1.0,
     parseFloat(process.env.FEE_BUFFER_MULTIPLIER || '1.2')
   );
+
+  // Token program: 'token' (default) or 'token-2022'
+  const tokenProgram = process.env.TOKEN_PROGRAM || 'token';
+  const tokenProgramId =
+    tokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
 
   return {
     tokens,

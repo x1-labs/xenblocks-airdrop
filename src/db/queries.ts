@@ -1,6 +1,4 @@
-import { getPrismaClient } from './client.js';
-
-const prisma = getPrismaClient();
+import { getPrismaClient, isDatabaseEnabled } from './client.js';
 
 /**
  * Get or create a wallet pair record
@@ -8,7 +6,10 @@ const prisma = getPrismaClient();
 export async function getOrCreateWalletPair(
   solAddress: string,
   ethAddress: string
-): Promise<number> {
+): Promise<number | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) return null;
+
   const walletPair = await prisma.walletPair.upsert({
     where: {
       solAddress_ethAddress: { solAddress, ethAddress },
@@ -26,6 +27,9 @@ export async function getOrCreateWalletPair(
 export async function ensureAirdropRunExists(
   onChainRunId: bigint
 ): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) return;
+
   await prisma.airdropRun.upsert({
     where: { id: onChainRunId },
     update: {},
@@ -38,12 +42,15 @@ export async function ensureAirdropRunExists(
  */
 export async function logTransaction(
   runId: bigint,
-  walletPairId: number,
+  walletPairId: number | null,
   amount: bigint,
   txSignature: string,
   status: 'success' | 'failed',
   errorMessage?: string
 ): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma || walletPairId === null) return;
+
   await prisma.airdropTransaction.create({
     data: {
       runId,
@@ -60,6 +67,9 @@ export async function logTransaction(
  * Get all successful transactions for a Solana wallet
  */
 export async function getWalletTransactions(solAddress: string) {
+  const prisma = getPrismaClient();
+  if (!prisma) return [];
+
   return prisma.airdropTransaction.findMany({
     where: {
       walletPair: { solAddress },
@@ -77,6 +87,9 @@ export async function getWalletTransactions(solAddress: string) {
  * (Run details are stored on-chain, use getAirdropRun from onchain/client.ts)
  */
 export async function getRunTransactionCount(runId: bigint) {
+  const prisma = getPrismaClient();
+  if (!prisma) return 0;
+
   const run = await prisma.airdropRun.findUnique({
     where: { id: runId },
     include: {
@@ -89,3 +102,5 @@ export async function getRunTransactionCount(runId: bigint) {
   });
   return run?._count.transactions ?? 0;
 }
+
+export { isDatabaseEnabled };
