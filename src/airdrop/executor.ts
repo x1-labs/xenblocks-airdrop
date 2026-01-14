@@ -1,5 +1,5 @@
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { Config } from '../config.js';
+import { Config, TokenType } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
 import { calculateDeltas, calculateTotalAmount } from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
@@ -17,6 +17,14 @@ import {
   initializeState,
   getGlobalState,
 } from '../onchain/client.js';
+import { TOKEN_TYPE, TokenTypeValue } from '../onchain/types.js';
+
+/**
+ * Convert config TokenType to on-chain TokenTypeValue
+ */
+function toOnChainTokenType(tokenType: TokenType): TokenTypeValue {
+  return tokenType === 'xnm' ? TOKEN_TYPE.XNM : TOKEN_TYPE.XBLK;
+}
 
 /**
  * Fetch miners from the API
@@ -42,7 +50,11 @@ export async function executeAirdrop(
   payer: Keypair,
   config: Config
 ): Promise<void> {
-  console.log('\n🎯 XNM Airdrop Starting...');
+  const tokenName = config.tokenType.toUpperCase();
+  const onChainTokenType = toOnChainTokenType(config.tokenType);
+
+  console.log(`\n🎯 ${tokenName} Airdrop Starting...`);
+  console.log(`🪙 Token: ${tokenName}`);
   console.log(`🔧 Dry Run: ${config.dryRun}`);
   console.log(
     `🔗 Tracker Program: ${config.airdropTrackerProgramId.toString()}`
@@ -81,7 +93,7 @@ export async function executeAirdrop(
 
   // Get payer balance
   const payerInfo = await getPayerBalance(connection, payer, config);
-  console.log(`\n💰 Payer balance: ${payerInfo.formatted} XNM`);
+  console.log(`\n💰 Payer balance: ${payerInfo.formatted} ${tokenName}`);
   console.log(`📊 Total miners: ${miners.length}`);
 
   // Fetch on-chain snapshots and calculate deltas
@@ -93,15 +105,16 @@ export async function executeAirdrop(
   const lastSnapshot = await fetchAllOnChainSnapshots(
     connection,
     config.airdropTrackerProgramId,
-    minerData
+    minerData,
+    onChainTokenType
   );
   console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
-  const deltas = calculateDeltas(miners, lastSnapshot);
+  const deltas = calculateDeltas(miners, lastSnapshot, config.tokenType);
 
   const totalNeeded = calculateTotalAmount(deltas);
   console.log(`💸 Recipients with positive delta: ${deltas.length}`);
   console.log(
-    `💸 Total needed: ${formatTokenAmount(totalNeeded, config.decimals)} XNM`
+    `💸 Total needed: ${formatTokenAmount(totalNeeded, config.decimals)} ${tokenName}`
   );
 
   // Check balance
@@ -111,7 +124,7 @@ export async function executeAirdrop(
       config.decimals
     );
     console.log(
-      `\n⚠️  WARNING: Insufficient balance! Need ${shortfall} more XNM`
+      `\n⚠️  WARNING: Insufficient balance! Need ${shortfall} more ${tokenName}`
     );
     if (!config.dryRun) {
       console.log('❌ Stopping execution due to insufficient funds');
@@ -126,7 +139,8 @@ export async function executeAirdrop(
     payer,
     config,
     runId,
-    deltas
+    deltas,
+    onChainTokenType
   );
 
   // Update on-chain run totals
@@ -153,7 +167,7 @@ export async function executeAirdrop(
   console.log(`   Successful: ${successCount}`);
   console.log(`   Failed: ${results.length - successCount}`);
   console.log(
-    `   Total sent: ${formatTokenAmount(totalSent, config.decimals)} XNM`
+    `   Total sent: ${formatTokenAmount(totalSent, config.decimals)} ${tokenName}`
   );
 }
 
@@ -165,9 +179,11 @@ async function processAirdrops(
   payer: Keypair,
   config: Config,
   runId: bigint,
-  deltas: DeltaResult[]
+  deltas: DeltaResult[],
+  onChainTokenType: TokenTypeValue
 ): Promise<AirdropResult[]> {
   const results: AirdropResult[] = [];
+  const tokenName = config.tokenType.toUpperCase();
 
   for (const delta of deltas) {
     const humanAmount = formatTokenAmount(delta.deltaAmount, config.decimals);
@@ -180,7 +196,7 @@ async function processAirdrops(
 
     if (config.dryRun) {
       console.log(
-        `🧪 [DRY RUN] Would send ${humanAmount} XNM to ${delta.walletAddress}`
+        `🧪 [DRY RUN] Would send ${humanAmount} ${tokenName} to ${delta.walletAddress}`
       );
       results.push({
         walletAddress: delta.walletAddress,
@@ -203,7 +219,7 @@ async function processAirdrops(
 
     if (transferResult.success) {
       console.log(
-        `✅ ${delta.walletAddress}: ${humanAmount} XNM | Tx: ${transferResult.txSignature}`
+        `✅ ${delta.walletAddress}: ${humanAmount} ${tokenName} | Tx: ${transferResult.txSignature}`
       );
 
       // Update on-chain record
@@ -214,6 +230,7 @@ async function processAirdrops(
           payer,
           new PublicKey(delta.walletAddress),
           delta.ethAddress,
+          onChainTokenType,
           delta.deltaAmount
         );
         console.log(`   📝 On-chain record updated: ${onchainTx}`);

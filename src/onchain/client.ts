@@ -20,6 +20,8 @@ import {
   AirdropRecord,
   GlobalState,
   OnChainAirdropRun,
+  TOKEN_TYPE,
+  TokenTypeValue,
 } from './types.js';
 
 // ============================================================================
@@ -67,13 +69,25 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
   const ethAddress = Array.from(
     data.slice(
       AIRDROP_RECORD_OFFSETS.ETH_ADDRESS,
-      AIRDROP_RECORD_OFFSETS.TOTAL_AIRDROPPED
+      AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
     )
   );
 
-  const totalAirdropped = data.readBigUInt64LE(
-    AIRDROP_RECORD_OFFSETS.TOTAL_AIRDROPPED
+  const xnmAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
   );
+
+  const xblkAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_OFFSETS.XBLK_AIRDROPPED
+  );
+
+  // Read reserved array (6 u64 values)
+  const reserved: bigint[] = [];
+  for (let i = 0; i < 6; i++) {
+    reserved.push(
+      data.readBigUInt64LE(AIRDROP_RECORD_OFFSETS.RESERVED + i * 8)
+    );
+  }
 
   const lastUpdated = data.readBigInt64LE(AIRDROP_RECORD_OFFSETS.LAST_UPDATED);
 
@@ -82,7 +96,9 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
   return {
     solWallet,
     ethAddress,
-    totalAirdropped,
+    xnmAirdropped,
+    xblkAirdropped,
+    reserved,
     lastUpdated,
     bump,
   };
@@ -134,7 +150,8 @@ export async function getOnChainAmount(
   connection: Connection,
   programId: PublicKey,
   solWallet: PublicKey,
-  ethAddress: string
+  ethAddress: string,
+  tokenType: TokenTypeValue = TOKEN_TYPE.XNM
 ): Promise<bigint | null> {
   const [pda] = deriveAirdropRecordPDA(programId, solWallet, ethAddress);
   const accountInfo = await connection.getAccountInfo(pda);
@@ -144,17 +161,20 @@ export async function getOnChainAmount(
   }
 
   const record = deserializeAirdropRecord(accountInfo.data);
-  return record.totalAirdropped;
+  return tokenType === TOKEN_TYPE.XNM
+    ? record.xnmAirdropped
+    : record.xblkAirdropped;
 }
 
 /**
  * Fetch on-chain snapshots for all miners in batch
- * Returns a Map of solAddress -> totalAirdropped
+ * Returns a Map of solAddress -> airdropped amount for the specified token
  */
 export async function fetchAllOnChainSnapshots(
   connection: Connection,
   programId: PublicKey,
-  miners: { solAddress: string; ethAddress: string }[]
+  miners: { solAddress: string; ethAddress: string }[],
+  tokenType: TokenTypeValue = TOKEN_TYPE.XNM
 ): Promise<Map<string, bigint>> {
   const snapshots = new Map<string, bigint>();
 
@@ -184,7 +204,11 @@ export async function fetchAllOnChainSnapshots(
       const account = accounts[j];
       if (account) {
         const record = deserializeAirdropRecord(account.data);
-        snapshots.set(batch[j].miner.solAddress, record.totalAirdropped);
+        const amount =
+          tokenType === TOKEN_TYPE.XNM
+            ? record.xnmAirdropped
+            : record.xblkAirdropped;
+        snapshots.set(batch[j].miner.solAddress, amount);
       }
       // If account is null, wallet has no on-chain record (new wallet)
     }
@@ -318,12 +342,14 @@ export function createInitializeRecordInstruction(
 
 /**
  * Create instruction to update an existing airdrop record
+ * token_type: 0 = XNM, 1 = XBLK
  */
 export function createUpdateRecordInstruction(
   programId: PublicKey,
   authority: PublicKey,
   solWallet: PublicKey,
   ethAddress: string,
+  tokenType: TokenTypeValue,
   amountToAdd: bigint
 ): TransactionInstruction {
   const [airdropRecord] = deriveAirdropRecordPDA(
@@ -335,10 +361,11 @@ export function createUpdateRecordInstruction(
   // Anchor instruction discriminator for "update_record"
   const discriminator = Buffer.from([227, 174, 42, 204, 79, 138, 139, 40]);
 
-  const amountBuffer = Buffer.alloc(8);
-  amountBuffer.writeBigUInt64LE(amountToAdd);
-
-  const data = Buffer.concat([discriminator, amountBuffer]);
+  // token_type (1 byte) + amount (8 bytes)
+  const data = Buffer.alloc(discriminator.length + 1 + 8);
+  discriminator.copy(data, 0);
+  data.writeUInt8(tokenType, 8);
+  data.writeBigUInt64LE(amountToAdd, 9);
 
   return new TransactionInstruction({
     keys: [
@@ -352,12 +379,14 @@ export function createUpdateRecordInstruction(
 
 /**
  * Create instruction to initialize and update in one call
+ * token_type: 0 = XNM, 1 = XBLK
  */
 export function createInitializeAndUpdateInstruction(
   programId: PublicKey,
   authority: PublicKey,
   solWallet: PublicKey,
   ethAddress: string,
+  tokenType: TokenTypeValue,
   initialAmount: bigint
 ): TransactionInstruction {
   const [airdropRecord] = deriveAirdropRecordPDA(
@@ -370,12 +399,17 @@ export function createInitializeAndUpdateInstruction(
   // Anchor instruction discriminator for "initialize_and_update"
   const discriminator = Buffer.from([116, 248, 142, 52, 137, 89, 223, 195]);
 
+  // eth_address (42 bytes) + token_type (1 byte) + amount (8 bytes)
+  const tokenTypeBuffer = Buffer.alloc(1);
+  tokenTypeBuffer.writeUInt8(tokenType);
+
   const amountBuffer = Buffer.alloc(8);
   amountBuffer.writeBigUInt64LE(initialAmount);
 
   const data = Buffer.concat([
     discriminator,
     Buffer.from(ethBytes),
+    tokenTypeBuffer,
     amountBuffer,
   ]);
 
@@ -493,6 +527,7 @@ export async function updateOnChainRecord(
   payer: Keypair,
   solWallet: PublicKey,
   ethAddress: string,
+  tokenType: TokenTypeValue,
   amountToAdd: bigint
 ): Promise<string> {
   const [pda] = deriveAirdropRecordPDA(programId, solWallet, ethAddress);
@@ -508,6 +543,7 @@ export async function updateOnChainRecord(
         payer.publicKey,
         solWallet,
         ethAddress,
+        tokenType,
         amountToAdd
       )
     );
@@ -519,6 +555,7 @@ export async function updateOnChainRecord(
         payer.publicKey,
         solWallet,
         ethAddress,
+        tokenType,
         amountToAdd
       )
     );
