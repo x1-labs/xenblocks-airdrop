@@ -10,7 +10,6 @@ async function main(): Promise<void> {
     console.log('🔧 Configuration loaded:');
     console.log(`   Token Mint: ${config.tokenMint.toString()}`);
     console.log(`   RPC Endpoint: ${config.rpcEndpoint}`);
-    console.log(`   Mode: ${config.mode}`);
     console.log(`   Dry Run: ${config.dryRun}`);
 
     const connection = getConnection(config);

@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  calculateDeltas,
-  calculateFullAmounts,
-  calculateTotalAmount,
-} from '../src/airdrop/delta';
+import { calculateDeltas, calculateTotalAmount } from '../src/airdrop/delta';
 import { Miner, DeltaResult } from '../src/airdrop/types';
 
 describe('calculateDeltas', () => {
@@ -90,44 +86,6 @@ describe('calculateDeltas', () => {
 
     expect(result[0].ethAddress).toBe('0xabcdef123456');
     expect(result[0].apiAmount).toBe('1.5E+18');
-  });
-});
-
-describe('calculateFullAmounts', () => {
-  it('should return all miners with non-zero amounts', () => {
-    const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18' },
-      { account: '0xeth2', solAddress: 'wallet2', xnm: '2E+18' },
-    ];
-
-    const result = calculateFullAmounts(miners);
-
-    expect(result).toHaveLength(2);
-    expect(result[0].deltaAmount).toBe(1000000000n);
-    expect(result[1].deltaAmount).toBe(2000000000n);
-  });
-
-  it('should exclude miners with zero amounts', () => {
-    const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18' },
-      { account: '0xeth2', solAddress: 'wallet2', xnm: '0' },
-    ];
-
-    const result = calculateFullAmounts(miners);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].walletAddress).toBe('wallet1');
-  });
-
-  it('should set previousAmount to 0 for all results', () => {
-    const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18' },
-    ];
-
-    const result = calculateFullAmounts(miners);
-
-    expect(result[0].previousAmount).toBe(0n);
-    expect(result[0].currentAmount).toBe(result[0].deltaAmount);
   });
 });
 

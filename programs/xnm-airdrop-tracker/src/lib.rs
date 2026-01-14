@@ -17,11 +17,7 @@ pub mod xnm_airdrop_tracker {
     }
 
     /// Create a new airdrop run
-    pub fn create_run(
-        ctx: Context<CreateRun>,
-        run_type: u8, // 0 = full, 1 = delta
-        dry_run: bool,
-    ) -> Result<()> {
+    pub fn create_run(ctx: Context<CreateRun>, dry_run: bool) -> Result<()> {
         let state = &mut ctx.accounts.state;
         let run = &mut ctx.accounts.airdrop_run;
 
@@ -29,7 +25,6 @@ pub mod xnm_airdrop_tracker {
 
         run.run_id = state.run_counter;
         run.run_date = Clock::get()?.unix_timestamp;
-        run.run_type = run_type;
         run.total_recipients = 0;
         run.total_amount = 0;
         run.dry_run = dry_run;
@@ -272,8 +267,6 @@ pub struct AirdropRun {
     pub run_id: u64, // 8 bytes
     /// Unix timestamp when run started
     pub run_date: i64, // 8 bytes
-    /// Run type: 0 = full, 1 = delta
-    pub run_type: u8, // 1 byte
     /// Number of successful recipients
     pub total_recipients: u32, // 4 bytes
     /// Total amount airdropped (in token base units)

@@ -11,7 +11,6 @@ export interface Config {
   dryRun: boolean;
   keypairPath: string;
   apiEndpoint: string;
-  mode: 'full' | 'delta';
 }
 
 export function loadConfig(): Config {
@@ -29,14 +28,6 @@ export function loadConfig(): Config {
     }
   }
 
-  // Parse mode from command line args
-  const modeArg = process.argv.find((arg) => arg.startsWith('--mode='));
-  const mode = modeArg ? (modeArg.split('=')[1] as 'full' | 'delta') : 'delta';
-
-  if (mode !== 'full' && mode !== 'delta') {
-    throw new Error(`Invalid mode: ${mode}. Must be 'full' or 'delta'`);
-  }
-
   return {
     tokenMint: new PublicKey(process.env.TOKEN_MINT!),
     airdropTrackerProgramId: new PublicKey(
@@ -49,6 +40,5 @@ export function loadConfig(): Config {
     apiEndpoint:
       process.env.API_ENDPOINT ||
       'https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true',
-    mode,
   };
 }

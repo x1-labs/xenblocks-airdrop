@@ -20,7 +20,6 @@ import {
   AirdropRecord,
   GlobalState,
   OnChainAirdropRun,
-  RUN_TYPE,
 } from './types.js';
 
 // ============================================================================
@@ -47,7 +46,6 @@ export function deserializeAirdropRun(data: Buffer): OnChainAirdropRun {
   return {
     runId: data.readBigUInt64LE(AIRDROP_RUN_OFFSETS.RUN_ID),
     runDate: data.readBigInt64LE(AIRDROP_RUN_OFFSETS.RUN_DATE),
-    runType: data.readUInt8(AIRDROP_RUN_OFFSETS.RUN_TYPE),
     totalRecipients: data.readUInt32LE(AIRDROP_RUN_OFFSETS.TOTAL_RECIPIENTS),
     totalAmount: data.readBigUInt64LE(AIRDROP_RUN_OFFSETS.TOTAL_AMOUNT),
     dryRun: data.readUInt8(AIRDROP_RUN_OFFSETS.DRY_RUN) === 1,
@@ -229,7 +227,6 @@ export function createCreateRunInstruction(
   programId: PublicKey,
   authority: PublicKey,
   nextRunId: bigint,
-  runType: 'full' | 'delta',
   dryRun: boolean
 ): TransactionInstruction {
   const [state] = deriveGlobalStatePDA(programId);
@@ -238,10 +235,9 @@ export function createCreateRunInstruction(
   // Anchor discriminator for "create_run"
   const discriminator = Buffer.from([255, 129, 108, 228, 110, 1, 42, 82]);
 
-  const data = Buffer.alloc(discriminator.length + 2);
+  const data = Buffer.alloc(discriminator.length + 1);
   discriminator.copy(data, 0);
-  data.writeUInt8(runType === 'full' ? RUN_TYPE.FULL : RUN_TYPE.DELTA, 8);
-  data.writeUInt8(dryRun ? 1 : 0, 9);
+  data.writeUInt8(dryRun ? 1 : 0, 8);
 
   return new TransactionInstruction({
     keys: [
@@ -428,7 +424,6 @@ export async function createOnChainRun(
   connection: Connection,
   programId: PublicKey,
   payer: Keypair,
-  runType: 'full' | 'delta',
   dryRun: boolean
 ): Promise<{ runId: bigint; signature: string }> {
   // Get current run counter
@@ -443,13 +438,7 @@ export async function createOnChainRun(
 
   const transaction = new Transaction();
   transaction.add(
-    createCreateRunInstruction(
-      programId,
-      payer.publicKey,
-      nextRunId,
-      runType,
-      dryRun
-    )
+    createCreateRunInstruction(programId, payer.publicKey, nextRunId, dryRun)
   );
 
   const signature = await sendAndConfirmTransaction(
