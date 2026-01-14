@@ -13,6 +13,7 @@ import {
   getPayerBalance,
   batchTransferTokens,
   BatchTransferItem,
+  estimateTotalFees,
 } from '../solana/transfer.js';
 import {
   logTransaction,
@@ -66,7 +67,14 @@ export async function executeAirdrop(
   const tokenNames = config.tokens.map((t) => t.type.toUpperCase()).join(', ');
   logger.info('Multi-Token Airdrop Starting...');
   logger.info({ tokens: tokenNames }, 'Tokens to process');
-  logger.info({ dryRun: config.dryRun, batchSize: config.batchSize }, 'Configuration');
+  logger.info(
+    {
+      dryRun: config.dryRun,
+      batchSize: config.batchSize,
+      feeBuffer: `${((config.feeBufferMultiplier - 1) * 100).toFixed(0)}%`,
+    },
+    'Configuration'
+  );
   logger.debug(
     { programId: config.airdropTrackerProgramId.toString() },
     'Tracker Program'
@@ -210,6 +218,39 @@ async function executeTokenAirdrop(
     if (!config.dryRun) {
       logger.error({ token: tokenName }, 'Skipping token due to insufficient funds');
       return;
+    }
+  }
+
+  // Estimate total transaction fees
+  if (deltas.length > 0 && !config.dryRun) {
+    try {
+      const feeEstimate = await estimateTotalFees(
+        connection,
+        payer,
+        tokenConfig,
+        deltas.length,
+        config.batchSize,
+        config.batchSize, // record instructions per batch
+        config.feeBufferMultiplier
+      );
+      const estimatedFeeFormatted = (
+        Number(feeEstimate.totalFee) / LAMPORTS_PER_SOL
+      ).toFixed(6);
+      logger.info(
+        {
+          estimatedFee: estimatedFeeFormatted,
+          numBatches: feeEstimate.numBatches,
+          perBatchFee: (
+            Number(feeEstimate.perBatchFee) / LAMPORTS_PER_SOL
+          ).toFixed(6),
+        },
+        'Estimated transaction fees'
+      );
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : 'Unknown error' },
+        'Could not estimate fees, proceeding anyway'
+      );
     }
   }
 
@@ -366,7 +407,8 @@ async function processBatchedAirdrops(
       payer,
       tokenConfig,
       transferItems,
-      recordInstructions
+      recordInstructions,
+      config.feeBufferMultiplier
     );
 
     // Process results for each item in the batch

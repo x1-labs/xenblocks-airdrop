@@ -20,6 +20,7 @@ export interface Config {
   apiEndpoint: string;
   minFeeBalance: bigint;
   batchSize: number;
+  feeBufferMultiplier: number;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk'];
@@ -96,6 +97,12 @@ export function loadConfig(): Config {
   // Parse batch size (default 5 transfers per transaction)
   const batchSize = Math.max(1, parseInt(process.env.BATCH_SIZE || '5', 10));
 
+  // Parse fee buffer multiplier (default 1.2 = 20% buffer)
+  const feeBufferMultiplier = Math.max(
+    1.0,
+    parseFloat(process.env.FEE_BUFFER_MULTIPLIER || '1.2')
+  );
+
   return {
     tokens,
     airdropTrackerProgramId: new PublicKey(
@@ -109,5 +116,6 @@ export function loadConfig(): Config {
       'https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true',
     minFeeBalance,
     batchSize,
+    feeBufferMultiplier,
   };
 }
