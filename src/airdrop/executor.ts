@@ -1,9 +1,19 @@
-import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import {
+  Connection,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  TransactionInstruction,
+} from '@solana/web3.js';
 import { Config, TokenConfig, TokenType } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
 import { calculateDeltas, calculateTotalAmount } from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
-import { transferTokens, getPayerBalance } from '../solana/transfer.js';
+import {
+  getPayerBalance,
+  batchTransferTokens,
+  BatchTransferItem,
+} from '../solana/transfer.js';
 import {
   logTransaction,
   ensureAirdropRunExists,
@@ -11,11 +21,12 @@ import {
 } from '../db/queries.js';
 import {
   fetchAllOnChainSnapshots,
-  updateOnChainRecord,
   createOnChainRun,
   updateOnChainRunTotals,
   initializeState,
   getGlobalState,
+  createUpdateRecordInstruction,
+  createInitializeAndUpdateInstruction,
 } from '../onchain/client.js';
 import { TOKEN_TYPE, TokenTypeValue } from '../onchain/types.js';
 import logger from '../utils/logger.js';
@@ -55,7 +66,7 @@ export async function executeAirdrop(
   const tokenNames = config.tokens.map((t) => t.type.toUpperCase()).join(', ');
   logger.info('Multi-Token Airdrop Starting...');
   logger.info({ tokens: tokenNames }, 'Tokens to process');
-  logger.info({ dryRun: config.dryRun }, 'Dry run mode');
+  logger.info({ dryRun: config.dryRun, batchSize: config.batchSize }, 'Configuration');
   logger.debug(
     { programId: config.airdropTrackerProgramId.toString() },
     'Tracker Program'
@@ -202,16 +213,20 @@ async function executeTokenAirdrop(
     }
   }
 
-  // Execute transfers
-  logger.info({ token: tokenName }, 'Starting airdrop execution...');
-  const results = await processAirdrops(
+  // Execute transfers in batches
+  logger.info(
+    { token: tokenName, batchSize: config.batchSize },
+    'Starting batched airdrop execution...'
+  );
+  const results = await processBatchedAirdrops(
     connection,
     payer,
     config,
     tokenConfig,
     runId,
     deltas,
-    onChainTokenType
+    onChainTokenType,
+    lastSnapshot
   );
 
   // Update on-chain run totals
@@ -246,134 +261,189 @@ async function executeTokenAirdrop(
 }
 
 /**
- * Process individual airdrops
+ * Process airdrops in batches
  */
-async function processAirdrops(
+async function processBatchedAirdrops(
   connection: Connection,
   payer: Keypair,
   config: Config,
   tokenConfig: TokenConfig,
   runId: bigint,
   deltas: DeltaResult[],
-  onChainTokenType: TokenTypeValue
+  onChainTokenType: TokenTypeValue,
+  existingRecords: Map<string, bigint>
 ): Promise<AirdropResult[]> {
   const results: AirdropResult[] = [];
   const tokenName = tokenConfig.type.toUpperCase();
+  const { batchSize } = config;
 
-  for (const delta of deltas) {
-    const humanAmount = formatTokenAmount(
-      delta.deltaAmount,
-      tokenConfig.decimals
+  // Process in batches
+  const totalBatches = Math.ceil(deltas.length / batchSize);
+
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    const start = batchIndex * batchSize;
+    const end = Math.min(start + batchSize, deltas.length);
+    const batch = deltas.slice(start, end);
+
+    logger.info(
+      {
+        batch: batchIndex + 1,
+        totalBatches,
+        items: batch.length,
+      },
+      'Processing batch'
     );
 
-    // Get or create wallet pair for logging
-    const walletPairId = await getOrCreateWalletPair(
-      delta.walletAddress,
-      delta.ethAddress
-    );
-
+    // Handle dry run
     if (config.dryRun) {
-      logger.info(
-        {
-          wallet: delta.walletAddress,
-          amount: humanAmount,
-          token: tokenName,
-        },
-        '[DRY RUN] Would send tokens'
-      );
-      results.push({
-        walletAddress: delta.walletAddress,
-        ethAddress: delta.ethAddress,
-        amount: delta.deltaAmount,
-        txSignature: null,
-        status: 'success',
-      });
+      for (const delta of batch) {
+        const humanAmount = formatTokenAmount(
+          delta.deltaAmount,
+          tokenConfig.decimals
+        );
+        logger.info(
+          {
+            wallet: delta.walletAddress,
+            amount: humanAmount,
+            token: tokenName,
+          },
+          '[DRY RUN] Would send tokens'
+        );
+        results.push({
+          walletAddress: delta.walletAddress,
+          ethAddress: delta.ethAddress,
+          amount: delta.deltaAmount,
+          txSignature: null,
+          status: 'success',
+        });
+      }
       continue;
     }
 
-    // Execute token transfer
-    const transferResult = await transferTokens(
+    // Prepare batch transfer items
+    const transferItems: BatchTransferItem[] = batch.map((delta) => ({
+      recipientAddress: delta.walletAddress,
+      ethAddress: delta.ethAddress,
+      amount: delta.deltaAmount,
+    }));
+
+    // Build record update instructions for all items in batch
+    const recordInstructions: TransactionInstruction[] = [];
+    for (const delta of batch) {
+      const solWallet = new PublicKey(delta.walletAddress);
+      const hasExistingRecord = existingRecords.has(delta.walletAddress);
+
+      if (hasExistingRecord) {
+        // Record exists, use update instruction
+        recordInstructions.push(
+          createUpdateRecordInstruction(
+            config.airdropTrackerProgramId,
+            payer.publicKey,
+            solWallet,
+            delta.ethAddress,
+            onChainTokenType,
+            delta.deltaAmount
+          )
+        );
+      } else {
+        // Record doesn't exist, use initialize and update instruction
+        recordInstructions.push(
+          createInitializeAndUpdateInstruction(
+            config.airdropTrackerProgramId,
+            payer.publicKey,
+            solWallet,
+            delta.ethAddress,
+            onChainTokenType,
+            delta.deltaAmount
+          )
+        );
+      }
+    }
+
+    // Execute batched transfer with record updates
+    const batchResult = await batchTransferTokens(
       connection,
       payer,
       tokenConfig,
-      delta.walletAddress,
-      delta.deltaAmount
+      transferItems,
+      recordInstructions
     );
 
-    if (transferResult.success) {
-      logger.info(
-        {
-          wallet: delta.walletAddress,
-          amount: humanAmount,
-          token: tokenName,
-          txSignature: transferResult.txSignature,
-        },
-        'Transfer successful'
+    // Process results for each item in the batch
+    for (const delta of batch) {
+      const humanAmount = formatTokenAmount(
+        delta.deltaAmount,
+        tokenConfig.decimals
       );
 
-      // Update on-chain record
-      try {
-        const onchainTx = await updateOnChainRecord(
-          connection,
-          config.airdropTrackerProgramId,
-          payer,
-          new PublicKey(delta.walletAddress),
-          delta.ethAddress,
-          onChainTokenType,
-          delta.deltaAmount
-        );
-        logger.debug({ signature: onchainTx }, 'On-chain record updated');
-      } catch (error) {
-        logger.warn(
+      // Get or create wallet pair for logging
+      const walletPairId = await getOrCreateWalletPair(
+        delta.walletAddress,
+        delta.ethAddress
+      );
+
+      if (batchResult.success) {
+        logger.info(
           {
             wallet: delta.walletAddress,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            amount: humanAmount,
+            token: tokenName,
           },
-          'Failed to update on-chain record'
+          'Transfer successful'
         );
-        // Continue anyway - the token transfer succeeded
+
+        await logTransaction(
+          runId,
+          walletPairId,
+          delta.deltaAmount,
+          batchResult.txSignature!,
+          'success'
+        );
+
+        results.push({
+          walletAddress: delta.walletAddress,
+          ethAddress: delta.ethAddress,
+          amount: delta.deltaAmount,
+          txSignature: batchResult.txSignature!,
+          status: 'success',
+        });
+
+        // Update existingRecords for subsequent batches
+        existingRecords.set(delta.walletAddress, delta.deltaAmount);
+      } else {
+        logger.error(
+          {
+            wallet: delta.walletAddress,
+            error: batchResult.errorMessage,
+          },
+          'Transfer failed'
+        );
+
+        await logTransaction(
+          runId,
+          walletPairId,
+          delta.deltaAmount,
+          '',
+          'failed',
+          batchResult.errorMessage
+        );
+
+        results.push({
+          walletAddress: delta.walletAddress,
+          ethAddress: delta.ethAddress,
+          amount: delta.deltaAmount,
+          txSignature: null,
+          status: 'failed',
+          errorMessage: batchResult.errorMessage,
+        });
       }
+    }
 
-      // Log to database
-      await logTransaction(
-        runId,
-        walletPairId,
-        delta.deltaAmount,
-        transferResult.txSignature!,
-        'success'
+    if (batchResult.success) {
+      logger.debug(
+        { signature: batchResult.txSignature },
+        'Batch transaction confirmed'
       );
-
-      results.push({
-        walletAddress: delta.walletAddress,
-        ethAddress: delta.ethAddress,
-        amount: delta.deltaAmount,
-        txSignature: transferResult.txSignature!,
-        status: 'success',
-      });
-    } else {
-      logger.error(
-        {
-          wallet: delta.walletAddress,
-          error: transferResult.errorMessage,
-        },
-        'Transfer failed'
-      );
-      await logTransaction(
-        runId,
-        walletPairId,
-        delta.deltaAmount,
-        '',
-        'failed',
-        transferResult.errorMessage
-      );
-      results.push({
-        walletAddress: delta.walletAddress,
-        ethAddress: delta.ethAddress,
-        amount: delta.deltaAmount,
-        txSignature: null,
-        status: 'failed',
-        errorMessage: transferResult.errorMessage,
-      });
     }
   }
 
