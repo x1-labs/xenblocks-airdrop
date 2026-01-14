@@ -5,20 +5,69 @@ dotenv.config();
 
 export type TokenType = 'xnm' | 'xblk';
 
+export interface TokenConfig {
+  type: TokenType;
+  mint: PublicKey;
+  decimals: number;
+}
+
 export interface Config {
-  tokenMint: PublicKey;
-  tokenType: TokenType;
+  tokens: TokenConfig[];
   airdropTrackerProgramId: PublicKey;
   rpcEndpoint: string;
-  decimals: number;
   dryRun: boolean;
   keypairPath: string;
   apiEndpoint: string;
 }
 
+const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk'];
+
+/**
+ * Parse comma-separated token types from environment variable
+ */
+function parseTokenTypes(tokenTypesEnv: string): TokenType[] {
+  const types = tokenTypesEnv
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 0);
+
+  if (types.length === 0) {
+    throw new Error('TOKEN_TYPES cannot be empty');
+  }
+
+  for (const type of types) {
+    if (!VALID_TOKEN_TYPES.includes(type as TokenType)) {
+      throw new Error(
+        `Invalid token type: ${type}. Must be one of: ${VALID_TOKEN_TYPES.join(', ')}`
+      );
+    }
+  }
+
+  return types as TokenType[];
+}
+
+/**
+ * Get token configuration for a specific token type
+ */
+function getTokenConfig(tokenType: TokenType): TokenConfig {
+  const envPrefix = tokenType.toUpperCase();
+  const mintEnvVar = `${envPrefix}_TOKEN_MINT`;
+  const decimalsEnvVar = `${envPrefix}_DECIMALS`;
+
+  const mint = process.env[mintEnvVar];
+  if (!mint) {
+    throw new Error(`Missing required environment variable: ${mintEnvVar}`);
+  }
+
+  return {
+    type: tokenType,
+    mint: new PublicKey(mint),
+    decimals: parseInt(process.env[decimalsEnvVar] || '9'),
+  };
+}
+
 export function loadConfig(): Config {
   const requiredVars = [
-    'TOKEN_MINT',
     'AIRDROP_TRACKER_PROGRAM_ID',
     'RPC_ENDPOINT',
     'KEYPAIR_PATH',
@@ -31,23 +80,19 @@ export function loadConfig(): Config {
     }
   }
 
-  // Parse token type from env (defaults to 'xnm')
-  const tokenTypeEnv = (process.env.TOKEN_TYPE || 'xnm').toLowerCase();
-  if (tokenTypeEnv !== 'xnm' && tokenTypeEnv !== 'xblk') {
-    throw new Error(
-      `Invalid TOKEN_TYPE: ${tokenTypeEnv}. Must be 'xnm' or 'xblk'`
-    );
-  }
-  const tokenType: TokenType = tokenTypeEnv as TokenType;
+  // Parse token types from env (defaults to 'xnm')
+  const tokenTypesEnv = process.env.TOKEN_TYPES || 'xnm';
+  const tokenTypes = parseTokenTypes(tokenTypesEnv);
+
+  // Build token configs for each requested token type
+  const tokens = tokenTypes.map((type) => getTokenConfig(type));
 
   return {
-    tokenMint: new PublicKey(process.env.TOKEN_MINT!),
-    tokenType,
+    tokens,
     airdropTrackerProgramId: new PublicKey(
       process.env.AIRDROP_TRACKER_PROGRAM_ID!
     ),
     rpcEndpoint: process.env.RPC_ENDPOINT!,
-    decimals: parseInt(process.env.DECIMALS || '9'),
     dryRun: process.env.DRY_RUN === 'true',
     keypairPath: process.env.KEYPAIR_PATH!,
     apiEndpoint:

@@ -12,7 +12,7 @@ import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
-import { Config } from '../config.js';
+import { TokenConfig } from '../config.js';
 import { formatTokenAmount } from '../utils/format.js';
 
 export interface TransferResult {
@@ -27,12 +27,12 @@ export interface TransferResult {
 export async function getPayerBalance(
   connection: Connection,
   payer: Keypair,
-  config: Config
+  tokenConfig: TokenConfig
 ): Promise<{ balance: bigint; formatted: string; account: PublicKey }> {
   const payerTokenAccount = await getOrCreateAssociatedTokenAccount(
     connection,
     payer,
-    config.tokenMint,
+    tokenConfig.mint,
     payer.publicKey,
     false,
     undefined,
@@ -47,7 +47,7 @@ export async function getPayerBalance(
 
   return {
     balance,
-    formatted: formatTokenAmount(balance, config.decimals),
+    formatted: formatTokenAmount(balance, tokenConfig.decimals),
     account: payerTokenAccount.address,
   };
 }
@@ -58,7 +58,7 @@ export async function getPayerBalance(
 export async function transferTokens(
   connection: Connection,
   payer: Keypair,
-  config: Config,
+  tokenConfig: TokenConfig,
   recipientAddress: string,
   amount: bigint
 ): Promise<TransferResult> {
@@ -69,7 +69,7 @@ export async function transferTokens(
     const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
-      config.tokenMint,
+      tokenConfig.mint,
       payer.publicKey,
       false,
       undefined,
@@ -79,7 +79,7 @@ export async function transferTokens(
 
     // Get the expected ATA address for recipient
     const ataAddress = getAssociatedTokenAddressSync(
-      config.tokenMint,
+      tokenConfig.mint,
       recipient,
       false,
       TOKEN_2022_PROGRAM_ID
@@ -102,7 +102,7 @@ export async function transferTokens(
         payer.publicKey, // payer
         ataAddress, // ata
         recipient, // owner
-        config.tokenMint, // mint
+        tokenConfig.mint, // mint
         TOKEN_2022_PROGRAM_ID
       );
       transaction.add(createATAInstruction);

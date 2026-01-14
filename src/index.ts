@@ -8,8 +8,10 @@ async function main(): Promise<void> {
     const config = loadConfig();
 
     console.log('🔧 Configuration loaded:');
-    console.log(`   Token: ${config.tokenType.toUpperCase()}`);
-    console.log(`   Token Mint: ${config.tokenMint.toString()}`);
+    console.log(`   Tokens: ${config.tokens.map((t) => t.type.toUpperCase()).join(', ')}`);
+    for (const token of config.tokens) {
+      console.log(`   - ${token.type.toUpperCase()}: ${token.mint.toString()} (${token.decimals} decimals)`);
+    }
     console.log(`   RPC Endpoint: ${config.rpcEndpoint}`);
     console.log(`   Dry Run: ${config.dryRun}`);
 
