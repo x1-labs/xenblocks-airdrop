@@ -37,32 +37,6 @@ export function calculateDeltas(
 }
 
 /**
- * Calculate full amounts for miners (ignoring snapshots)
- * Used for 'full' mode airdrops
- */
-export function calculateFullAmounts(currentMiners: Miner[]): DeltaResult[] {
-  const results: DeltaResult[] = [];
-
-  for (const miner of currentMiners) {
-    const currentAmount = convertApiAmountToTokenAmount(miner.xnm);
-
-    // Only include non-zero amounts
-    if (currentAmount > 0n) {
-      results.push({
-        walletAddress: miner.solAddress,
-        ethAddress: miner.account,
-        apiAmount: miner.xnm,
-        currentAmount,
-        previousAmount: 0n,
-        deltaAmount: currentAmount,
-      });
-    }
-  }
-
-  return results;
-}
-
-/**
  * Calculate total amount needed for airdrop
  */
 export function calculateTotalAmount(deltas: DeltaResult[]): bigint {

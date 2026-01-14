@@ -1,11 +1,7 @@
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { Config } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
-import {
-  calculateDeltas,
-  calculateFullAmounts,
-  calculateTotalAmount,
-} from './delta.js';
+import { calculateDeltas, calculateTotalAmount } from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
 import { transferTokens, getPayerBalance } from '../solana/transfer.js';
 import {
@@ -47,7 +43,6 @@ export async function executeAirdrop(
   config: Config
 ): Promise<void> {
   console.log('\n🎯 XNM Airdrop Starting...');
-  console.log(`📋 Mode: ${config.mode.toUpperCase()}`);
   console.log(`🔧 Dry Run: ${config.dryRun}`);
   console.log(
     `🔗 Tracker Program: ${config.airdropTrackerProgramId.toString()}`
@@ -74,7 +69,6 @@ export async function executeAirdrop(
     connection,
     config.airdropTrackerProgramId,
     payer,
-    config.mode,
     config.dryRun
   );
   console.log(`   Created run #${runId} | Tx: ${runSig}`);
@@ -90,25 +84,19 @@ export async function executeAirdrop(
   console.log(`\n💰 Payer balance: ${payerInfo.formatted} XNM`);
   console.log(`📊 Total miners: ${miners.length}`);
 
-  // Calculate amounts based on mode
-  let deltas: DeltaResult[];
-  if (config.mode === 'delta') {
-    console.log('\n📈 Fetching on-chain snapshots...');
-    const minerData = miners.map((m) => ({
-      solAddress: m.solAddress,
-      ethAddress: m.account,
-    }));
-    const lastSnapshot = await fetchAllOnChainSnapshots(
-      connection,
-      config.airdropTrackerProgramId,
-      minerData
-    );
-    console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
-    deltas = calculateDeltas(miners, lastSnapshot);
-  } else {
-    console.log('\n📈 Calculating full amounts (ignoring snapshots)...');
-    deltas = calculateFullAmounts(miners);
-  }
+  // Fetch on-chain snapshots and calculate deltas
+  console.log('\n📈 Fetching on-chain snapshots...');
+  const minerData = miners.map((m) => ({
+    solAddress: m.solAddress,
+    ethAddress: m.account,
+  }));
+  const lastSnapshot = await fetchAllOnChainSnapshots(
+    connection,
+    config.airdropTrackerProgramId,
+    minerData
+  );
+  console.log(`   Found ${lastSnapshot.size} existing on-chain records`);
+  const deltas = calculateDeltas(miners, lastSnapshot);
 
   const totalNeeded = calculateTotalAmount(deltas);
   console.log(`💸 Recipients with positive delta: ${deltas.length}`);
