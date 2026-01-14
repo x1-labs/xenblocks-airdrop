@@ -253,6 +253,54 @@ export async function fetchAllOnChainSnapshots(
   return snapshots;
 }
 
+/**
+ * Fetch on-chain snapshots for all miners in batch (both tokens)
+ * Uses getProgramAccounts for efficiency - single RPC call instead of batched fetches
+ * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped }
+ */
+export async function fetchAllMultiTokenSnapshots(
+  connection: Connection,
+  programId: PublicKey,
+  _miners: { solAddress: string; ethAddress: string }[]
+): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint }>> {
+  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint }>();
+
+  // Fetch all airdrop record accounts in one call
+  const accounts = await connection.getProgramAccounts(programId, {
+    filters: [
+      // Filter by account size to only get AirdropRecord accounts
+      // Support both legacy (99 bytes) and new (155 bytes) schemas
+      // We'll fetch all and filter in code since we need both sizes
+    ],
+  });
+
+  for (const { account } of accounts) {
+    // Skip accounts that aren't AirdropRecord (check size)
+    const dataLen = account.data.length;
+    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
+      continue;
+    }
+
+    try {
+      const record = deserializeAirdropRecord(account.data);
+      // Convert ethAddress bytes back to string
+      const ethAddressBytes = record.ethAddress.filter(b => b !== 0);
+      const ethAddress = String.fromCharCode(...ethAddressBytes);
+      const solAddress = record.solWallet.toBase58();
+
+      const key = makeSnapshotKey(solAddress, ethAddress);
+      snapshots.set(key, {
+        xnmAirdropped: record.xnmAirdropped,
+        xblkAirdropped: record.xblkAirdropped,
+      });
+    } catch {
+      // Skip malformed accounts
+    }
+  }
+
+  return snapshots;
+}
+
 // ============================================================================
 // Instruction Builders
 // ============================================================================

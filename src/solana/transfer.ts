@@ -132,6 +132,23 @@ export interface BatchTransferResult {
   computeUnitLimit?: number;
 }
 
+/** Multi-token transfer item for a single recipient */
+export interface MultiTokenTransferItem {
+  recipientAddress: string;
+  ethAddress: string;
+  xnmAmount: bigint;
+  xblkAmount: bigint;
+}
+
+export interface MultiTokenBatchResult {
+  success: boolean;
+  txSignature?: string;
+  errorMessage?: string;
+  item: MultiTokenTransferItem;
+  simulatedCU?: number;
+  computeUnitLimit?: number;
+}
+
 export interface FeeEstimate {
   fee: bigint;
   feeWithBuffer: bigint;
@@ -598,4 +615,203 @@ export async function estimateTotalFees(
     perBatchFee,
     numBatches,
   };
+}
+
+/**
+ * Transfer multiple tokens to a single recipient in one transaction
+ * Includes both token transfers and record update instructions
+ */
+export async function multiTokenTransfer(
+  connection: Connection,
+  payer: Keypair,
+  xnmConfig: TokenConfig,
+  xblkConfig: TokenConfig,
+  tokenProgramId: PublicKey,
+  item: MultiTokenTransferItem,
+  recordUpdateInstructions: TransactionInstruction[],
+  feeBufferMultiplier: number = 1.2
+): Promise<MultiTokenBatchResult> {
+  try {
+    const recipient = new PublicKey(item.recipientAddress);
+    const transaction = new Transaction();
+
+    // Get payer's token accounts
+    const xnmFromAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      xnmConfig.mint,
+      payer.publicKey,
+      false,
+      undefined,
+      undefined,
+      tokenProgramId
+    );
+
+    const xblkFromAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      xblkConfig.mint,
+      payer.publicKey,
+      false,
+      undefined,
+      undefined,
+      tokenProgramId
+    );
+
+    // Get recipient ATAs
+    const xnmAta = getAssociatedTokenAddressSync(
+      xnmConfig.mint,
+      recipient,
+      true, // allowOwnerOffCurve
+      tokenProgramId
+    );
+
+    const xblkAta = getAssociatedTokenAddressSync(
+      xblkConfig.mint,
+      recipient,
+      true, // allowOwnerOffCurve
+      tokenProgramId
+    );
+
+    // Check which ATAs exist
+    const [xnmAtaInfo, xblkAtaInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta]);
+
+    // Create XNM ATA if needed and we have XNM to transfer
+    if (!xnmAtaInfo && item.xnmAmount > 0n) {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          payer.publicKey,
+          xnmAta,
+          recipient,
+          xnmConfig.mint,
+          tokenProgramId
+        )
+      );
+    }
+
+    // Create XBLK ATA if needed and we have XBLK to transfer
+    if (!xblkAtaInfo && item.xblkAmount > 0n) {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          payer.publicKey,
+          xblkAta,
+          recipient,
+          xblkConfig.mint,
+          tokenProgramId
+        )
+      );
+    }
+
+    // Add XNM transfer if amount > 0
+    if (item.xnmAmount > 0n) {
+      transaction.add(
+        createTransferInstruction(
+          xnmFromAccount.address,
+          xnmAta,
+          payer.publicKey,
+          item.xnmAmount,
+          [],
+          tokenProgramId
+        )
+      );
+    }
+
+    // Add XBLK transfer if amount > 0
+    if (item.xblkAmount > 0n) {
+      transaction.add(
+        createTransferInstruction(
+          xblkFromAccount.address,
+          xblkAta,
+          payer.publicKey,
+          item.xblkAmount,
+          [],
+          tokenProgramId
+        )
+      );
+    }
+
+    // Add record update instructions
+    for (const instruction of recordUpdateInstructions) {
+      transaction.add(instruction);
+    }
+
+    logger.trace({
+      xnmAtaExists: !!xnmAtaInfo,
+      xblkAtaExists: !!xblkAtaInfo,
+      xnmTransfer: item.xnmAmount > 0n,
+      xblkTransfer: item.xblkAmount > 0n,
+      recordInstructions: recordUpdateInstructions.length,
+      totalInstructions: transaction.instructions.length,
+    }, 'Building multi-token transaction');
+
+    // Simulate and estimate fee
+    const feeEstimate = await simulateAndEstimateFee(
+      connection,
+      transaction,
+      payer,
+      feeBufferMultiplier
+    );
+
+    // Set compute unit limit based on simulation (add 10% buffer)
+    const computeUnitLimit = Math.min(
+      Math.ceil(feeEstimate.unitsConsumed * 1.1),
+      1_400_000
+    );
+
+    const priorityFee = parseInt(process.env.PRIORITY_FEE || '1000', 10);
+
+    logger.debug({
+      simulatedCU: feeEstimate.unitsConsumed,
+      computeUnitLimit,
+      priorityFeeMicroLamports: priorityFee,
+    }, 'Multi-token transaction compute budget');
+
+    // Rebuild transaction with compute budget instructions
+    const finalTransaction = new Transaction();
+
+    finalTransaction.add(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit })
+    );
+
+    finalTransaction.add(
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee })
+    );
+
+    // Add all original instructions
+    for (const ix of transaction.instructions) {
+      finalTransaction.add(ix);
+    }
+
+    // Get fresh blockhash and send transaction
+    const { blockhash } = await connection.getLatestBlockhash();
+    finalTransaction.recentBlockhash = blockhash;
+    finalTransaction.feePayer = payer.publicKey;
+
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      finalTransaction,
+      [payer],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      success: true,
+      txSignature: signature,
+      item,
+      simulatedCU: feeEstimate.unitsConsumed,
+      computeUnitLimit,
+    };
+  } catch (error) {
+    const errorMessage = extractErrorDetails(error);
+    logger.debug({
+      errorMessage,
+      errorType: error?.constructor?.name,
+      recipient: item.recipientAddress,
+    }, 'Multi-token transfer error');
+    return {
+      success: false,
+      errorMessage,
+      item,
+    };
+  }
 }

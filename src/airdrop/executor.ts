@@ -5,24 +5,22 @@ import {
   PublicKey,
   TransactionInstruction,
 } from '@solana/web3.js';
-import { Config, TokenConfig, TokenType } from '../config.js';
-import { Miner, DeltaResult, AirdropResult } from './types.js';
-import { calculateDeltas, calculateTotalAmount } from './delta.js';
+import { Config, TokenConfig } from '../config.js';
+import { Miner, MultiTokenDelta, MultiTokenAirdropResult, OnChainSnapshot } from './types.js';
+import { calculateMultiTokenDeltas, calculateMultiTokenTotals } from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
 import {
   getPayerBalance,
-  batchTransferTokens,
-  BatchTransferItem,
-  estimateTotalFees,
+  multiTokenTransfer,
+  MultiTokenTransferItem,
 } from '../solana/transfer.js';
 import {
   logTransaction,
   ensureAirdropRunExists,
   getOrCreateWalletPair,
-  isDatabaseEnabled,
 } from '../db/queries.js';
 import {
-  fetchAllOnChainSnapshots,
+  fetchAllMultiTokenSnapshots,
   makeSnapshotKey,
   createOnChainRun,
   updateOnChainRunTotals,
@@ -31,15 +29,8 @@ import {
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
 } from '../onchain/client.js';
-import { TOKEN_TYPE, TokenTypeValue } from '../onchain/types.js';
+import { TOKEN_TYPE } from '../onchain/types.js';
 import logger from '../utils/logger.js';
-
-/**
- * Convert config TokenType to on-chain TokenTypeValue
- */
-function toOnChainTokenType(tokenType: TokenType): TokenTypeValue {
-  return tokenType === 'xnm' ? TOKEN_TYPE.XNM : TOKEN_TYPE.XBLK;
-}
 
 /**
  * Check if a string is a valid Solana address
@@ -104,7 +95,15 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
 }
 
 /**
- * Execute airdrop for all configured tokens
+ * Get token config by type
+ */
+function getTokenConfig(config: Config, tokenType: 'xnm' | 'xblk'): TokenConfig | undefined {
+  return config.tokens.find(t => t.type === tokenType);
+}
+
+/**
+ * Execute combined multi-token airdrop
+ * Processes both XNM and XBLK in a single pass with one transaction per recipient
  */
 export async function executeAirdrop(
   connection: Connection,
@@ -112,12 +111,11 @@ export async function executeAirdrop(
   config: Config
 ): Promise<void> {
   const tokenNames = config.tokens.map((t) => t.type.toUpperCase()).join(', ');
-  logger.info('Multi-Token Airdrop Starting...');
+  logger.info('Multi-Token Combined Airdrop Starting...');
   logger.info({ tokens: tokenNames }, 'Tokens to process');
   logger.info(
     {
       dryRun: config.dryRun,
-      batchSize: config.batchSize,
       concurrency: config.concurrency,
       feeBuffer: `${((config.feeBufferMultiplier - 1) * 100).toFixed(0)}%`,
     },
@@ -127,6 +125,15 @@ export async function executeAirdrop(
     { programId: config.airdropTrackerProgramId.toString() },
     'Tracker Program'
   );
+
+  // Get token configs
+  const xnmConfig = getTokenConfig(config, 'xnm');
+  const xblkConfig = getTokenConfig(config, 'xblk');
+
+  if (!xnmConfig || !xblkConfig) {
+    logger.error('Both XNM and XBLK token configs are required for combined airdrop');
+    throw new Error('Missing token configuration');
+  }
 
   // Check native balance for transaction fees
   const nativeBalance = await connection.getBalance(payer.publicKey);
@@ -152,6 +159,12 @@ export async function executeAirdrop(
       `Insufficient native balance: ${nativeBalanceFormatted} < ${minFeeBalanceFormatted} required`
     );
   }
+
+  // Check payer balances for both tokens
+  const xnmPayerInfo = await getPayerBalance(connection, payer, xnmConfig, config.tokenProgramId);
+  const xblkPayerInfo = await getPayerBalance(connection, payer, xblkConfig, config.tokenProgramId);
+
+  logger.info({ xnm: xnmPayerInfo.formatted, xblk: xblkPayerInfo.formatted }, 'Payer token balances');
 
   // Check if global state is initialized
   const globalState = await getGlobalState(
@@ -181,151 +194,76 @@ export async function executeAirdrop(
   // Ensure run exists in PostgreSQL for transaction logging
   await ensureAirdropRunExists(runId);
 
-  // Fetch miners from API once (used for all tokens)
+  // Fetch miners from API once
   const miners = await fetchMiners(config.apiEndpoint);
   logger.info({ totalMiners: miners.length }, 'Total miners loaded');
 
-  // Process each token
-  for (const tokenConfig of config.tokens) {
-    await executeTokenAirdrop(
-      connection,
-      payer,
-      config,
-      tokenConfig,
-      runId,
-      miners
-    );
-  }
-
-  logger.info('All token airdrops completed!');
-}
-
-/**
- * Execute airdrop for a single token type
- */
-async function executeTokenAirdrop(
-  connection: Connection,
-  payer: Keypair,
-  config: Config,
-  tokenConfig: TokenConfig,
-  runId: bigint,
-  miners: Miner[]
-): Promise<void> {
-  const tokenName = tokenConfig.type.toUpperCase();
-  const onChainTokenType = toOnChainTokenType(tokenConfig.type);
-
-  logger.info('='.repeat(50));
-  logger.info({ token: tokenName }, 'Processing token airdrop');
-  logger.debug({ mint: tokenConfig.mint.toString() }, 'Token mint');
-
-  // Get payer balance for this token
-  const payerInfo = await getPayerBalance(connection, payer, tokenConfig, config.tokenProgramId);
-  logger.info(
-    { balance: payerInfo.formatted, token: tokenName },
-    'Payer balance'
-  );
-
-  // Fetch on-chain snapshots and calculate deltas
+  // Fetch on-chain snapshots once (for both tokens)
   logger.info('Fetching on-chain snapshots...');
   const minerData = miners.map((m) => ({
     solAddress: m.solAddress,
     ethAddress: m.account,
   }));
-  const lastSnapshot = await fetchAllOnChainSnapshots(
+  const snapshots = await fetchAllMultiTokenSnapshots(
     connection,
     config.airdropTrackerProgramId,
-    minerData,
-    onChainTokenType
+    minerData
   );
-  logger.info(
-    { existingRecords: lastSnapshot.size },
-    'Found existing on-chain records'
-  );
-  const deltas = calculateDeltas(miners, lastSnapshot, tokenConfig.type);
+  logger.info({ existingRecords: snapshots.size }, 'Found existing on-chain records');
 
-  const totalNeeded = calculateTotalAmount(deltas);
+  // Calculate multi-token deltas
+  const deltas = calculateMultiTokenDeltas(miners, snapshots);
+  const { totalXnm, totalXblk } = calculateMultiTokenTotals(deltas);
+
   logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
-  logger.info(
-    {
-      totalNeeded: formatTokenAmount(totalNeeded, tokenConfig.decimals),
-      token: tokenName,
-    },
-    'Total tokens needed'
-  );
+  logger.info({
+    xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
+    xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
+  }, 'Total tokens needed');
 
-  // Check balance
-  if (totalNeeded > payerInfo.balance) {
-    const shortfall = formatTokenAmount(
-      totalNeeded - payerInfo.balance,
-      tokenConfig.decimals
-    );
-    logger.warn(
-      { shortfall, token: tokenName },
-      'Insufficient balance for airdrop'
-    );
+  // Check balances
+  if (totalXnm > xnmPayerInfo.balance) {
+    const shortfall = formatTokenAmount(totalXnm - xnmPayerInfo.balance, xnmConfig.decimals);
+    logger.warn({ shortfall, token: 'XNM' }, 'Insufficient XNM balance');
     if (!config.dryRun) {
-      logger.error({ token: tokenName }, 'Skipping token due to insufficient funds');
+      logger.error('Cannot proceed with insufficient XNM balance');
       return;
     }
   }
 
-  // Estimate total transaction fees
-  if (deltas.length > 0 && !config.dryRun) {
-    try {
-      const feeEstimate = await estimateTotalFees(
-        connection,
-        payer,
-        tokenConfig,
-        config.tokenProgramId,
-        deltas.length,
-        lastSnapshot.size,
-        config.batchSize,
-        config.feeBufferMultiplier
-      );
-      const estimatedFeeFormatted = (
-        Number(feeEstimate.totalFee) / LAMPORTS_PER_SOL
-      ).toFixed(6);
-      logger.info(
-        {
-          estimatedFee: estimatedFeeFormatted,
-          numBatches: feeEstimate.numBatches,
-          perBatchFee: (
-            Number(feeEstimate.perBatchFee) / LAMPORTS_PER_SOL
-          ).toFixed(6),
-        },
-        'Estimated transaction fees'
-      );
-    } catch (error) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : 'Unknown error' },
-        'Could not estimate fees, proceeding anyway'
-      );
+  if (totalXblk > xblkPayerInfo.balance) {
+    const shortfall = formatTokenAmount(totalXblk - xblkPayerInfo.balance, xblkConfig.decimals);
+    logger.warn({ shortfall, token: 'XBLK' }, 'Insufficient XBLK balance');
+    if (!config.dryRun) {
+      logger.error('Cannot proceed with insufficient XBLK balance');
+      return;
     }
   }
 
-  // Execute transfers in batches
-  logger.info(
-    { token: tokenName, batchSize: config.batchSize, concurrency: config.concurrency },
-    'Starting batched airdrop execution...'
-  );
-  const results = await processBatchedAirdrops(
+  // Process airdrops
+  logger.info({ recipients: deltas.length, concurrency: config.concurrency }, 'Starting combined airdrop...');
+
+  const results = await processMultiTokenAirdrops(
     connection,
     payer,
     config,
-    tokenConfig,
-    config.tokenProgramId,
+    xnmConfig,
+    xblkConfig,
     runId,
     deltas,
-    onChainTokenType,
-    lastSnapshot
+    snapshots
   );
 
-  // Update on-chain run totals
+  // Calculate totals
   const successCount = results.filter((r) => r.status === 'success').length;
-  const totalSent = results
+  const totalXnmSent = results
     .filter((r) => r.status === 'success')
-    .reduce((sum, r) => sum + r.amount, 0n);
+    .reduce((sum, r) => sum + r.xnmAmount, 0n);
+  const totalXblkSent = results
+    .filter((r) => r.status === 'success')
+    .reduce((sum, r) => sum + r.xblkAmount, 0n);
 
+  // Update on-chain run totals
   if (!config.dryRun && successCount > 0) {
     logger.info('Updating on-chain run totals...');
     const updateSig = await updateOnChainRunTotals(
@@ -334,296 +272,274 @@ async function executeTokenAirdrop(
       payer,
       runId,
       successCount,
-      totalSent
+      totalXnmSent + totalXblkSent
     );
     logger.debug({ signature: updateSig }, 'Run totals updated');
   }
 
-  // Summary for this token
-  logger.info(
-    {
-      token: tokenName,
-      successful: successCount,
-      failed: results.length - successCount,
-      totalSent: formatTokenAmount(totalSent, tokenConfig.decimals),
-    },
-    'Token airdrop summary'
-  );
+  // Summary
+  logger.info({
+    successful: successCount,
+    failed: results.length - successCount,
+    xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
+    xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
+  }, 'Airdrop complete');
 }
 
 /**
- * Process a single batch of transfers
+ * Process a single recipient's multi-token transfer
  */
-async function processSingleBatch(
+async function processSingleRecipient(
   connection: Connection,
   payer: Keypair,
   config: Config,
-  tokenConfig: TokenConfig,
-  tokenProgramId: PublicKey,
+  xnmConfig: TokenConfig,
+  xblkConfig: TokenConfig,
   runId: bigint,
-  batch: DeltaResult[],
-  onChainTokenType: TokenTypeValue,
-  existingRecords: Map<string, bigint>
-): Promise<{ results: AirdropResult[]; successCount: number; failCount: number }> {
-  const results: AirdropResult[] = [];
-  const tokenName = tokenConfig.type.toUpperCase();
+  delta: MultiTokenDelta,
+  hasExistingRecord: boolean
+): Promise<MultiTokenAirdropResult> {
+  const solWallet = new PublicKey(delta.walletAddress);
 
-  // Prepare batch transfer items
-  const transferItems: BatchTransferItem[] = batch.map((delta) => ({
-    recipientAddress: delta.walletAddress,
-    ethAddress: delta.ethAddress,
-    amount: delta.deltaAmount,
-  }));
-
-  // Build record update instructions for all items in batch
+  // Build record update instructions
   const recordInstructions: TransactionInstruction[] = [];
-  for (const delta of batch) {
-    const solWallet = new PublicKey(delta.walletAddress);
-    const recordKey = makeSnapshotKey(delta.walletAddress, delta.ethAddress);
-    const hasExistingRecord = existingRecords.has(recordKey);
 
-    if (hasExistingRecord) {
+  if (hasExistingRecord) {
+    // Update existing record for both tokens
+    if (delta.xnmDelta > 0n) {
       recordInstructions.push(
         createUpdateRecordInstruction(
           config.airdropTrackerProgramId,
           payer.publicKey,
           solWallet,
           delta.ethAddress,
-          onChainTokenType,
-          delta.deltaAmount
+          TOKEN_TYPE.XNM,
+          delta.xnmDelta
         )
       );
-    } else {
+    }
+    if (delta.xblkDelta > 0n) {
+      recordInstructions.push(
+        createUpdateRecordInstruction(
+          config.airdropTrackerProgramId,
+          payer.publicKey,
+          solWallet,
+          delta.ethAddress,
+          TOKEN_TYPE.XBLK,
+          delta.xblkDelta
+        )
+      );
+    }
+  } else {
+    // Initialize and update for first token, then update for second
+    if (delta.xnmDelta > 0n) {
       recordInstructions.push(
         createInitializeAndUpdateInstruction(
           config.airdropTrackerProgramId,
           payer.publicKey,
           solWallet,
           delta.ethAddress,
-          onChainTokenType,
-          delta.deltaAmount
+          TOKEN_TYPE.XNM,
+          delta.xnmDelta
+        )
+      );
+      // After initialize, use update for XBLK
+      if (delta.xblkDelta > 0n) {
+        recordInstructions.push(
+          createUpdateRecordInstruction(
+            config.airdropTrackerProgramId,
+            payer.publicKey,
+            solWallet,
+            delta.ethAddress,
+            TOKEN_TYPE.XBLK,
+            delta.xblkDelta
+          )
+        );
+      }
+    } else if (delta.xblkDelta > 0n) {
+      // Only XBLK delta, initialize with XBLK
+      recordInstructions.push(
+        createInitializeAndUpdateInstruction(
+          config.airdropTrackerProgramId,
+          payer.publicKey,
+          solWallet,
+          delta.ethAddress,
+          TOKEN_TYPE.XBLK,
+          delta.xblkDelta
         )
       );
     }
   }
 
-  // Execute batched transfer with record updates
-  const batchResult = await batchTransferTokens(
+  const transferItem: MultiTokenTransferItem = {
+    recipientAddress: delta.walletAddress,
+    ethAddress: delta.ethAddress,
+    xnmAmount: delta.xnmDelta,
+    xblkAmount: delta.xblkDelta,
+  };
+
+  // Execute multi-token transfer
+  const result = await multiTokenTransfer(
     connection,
     payer,
-    tokenConfig,
-    tokenProgramId,
-    transferItems,
+    xnmConfig,
+    xblkConfig,
+    config.tokenProgramId,
+    transferItem,
     recordInstructions,
     config.feeBufferMultiplier
   );
 
-  // Log transaction result once per batch
-  if (batchResult.success) {
+  const xnmFormatted = formatTokenAmount(delta.xnmDelta, xnmConfig.decimals);
+  const xblkFormatted = formatTokenAmount(delta.xblkDelta, xblkConfig.decimals);
+
+  if (result.success) {
     logger.trace(
-      { tx: batchResult.txSignature, simulatedCU: batchResult.simulatedCU, limitCU: batchResult.computeUnitLimit },
+      { tx: result.txSignature, simulatedCU: result.simulatedCU, limitCU: result.computeUnitLimit },
       'Transaction confirmed'
     );
+    logger.debug({
+      wallet: delta.walletAddress,
+      xnmApi: delta.xnmApiAmount,
+      xnmPrev: formatTokenAmount(delta.xnmPrevious, xnmConfig.decimals),
+      xnmDelta: xnmFormatted,
+      xblkApi: delta.xblkApiAmount,
+      xblkPrev: formatTokenAmount(delta.xblkPrevious, xblkConfig.decimals),
+      xblkDelta: xblkFormatted,
+    }, 'Transfer successful');
+
+    // Log to database
+    const walletPairId = await getOrCreateWalletPair(delta.walletAddress, delta.ethAddress);
+    await logTransaction(runId, walletPairId, delta.xnmDelta + delta.xblkDelta, result.txSignature!, 'success');
+
+    return {
+      walletAddress: delta.walletAddress,
+      ethAddress: delta.ethAddress,
+      xnmAmount: delta.xnmDelta,
+      xblkAmount: delta.xblkDelta,
+      txSignature: result.txSignature!,
+      status: 'success',
+    };
+  } else {
+    logger.error({
+      wallet: delta.walletAddress,
+      ethAddress: delta.ethAddress,
+      xnmDelta: xnmFormatted,
+      xblkDelta: xblkFormatted,
+      error: result.errorMessage,
+    }, 'Transfer failed');
+
+    const walletPairId = await getOrCreateWalletPair(delta.walletAddress, delta.ethAddress);
+    await logTransaction(runId, walletPairId, delta.xnmDelta + delta.xblkDelta, '', 'failed', result.errorMessage);
+
+    return {
+      walletAddress: delta.walletAddress,
+      ethAddress: delta.ethAddress,
+      xnmAmount: delta.xnmDelta,
+      xblkAmount: delta.xblkDelta,
+      txSignature: null,
+      status: 'failed',
+      errorMessage: result.errorMessage,
+    };
   }
-
-  let successCount = 0;
-  let failCount = 0;
-
-  // Process results for each item in the batch
-  for (const delta of batch) {
-    const humanAmount = formatTokenAmount(
-      delta.deltaAmount,
-      tokenConfig.decimals
-    );
-
-    const walletPairId = await getOrCreateWalletPair(
-      delta.walletAddress,
-      delta.ethAddress
-    );
-
-    if (batchResult.success) {
-      const previousFormatted = formatTokenAmount(delta.previousAmount, tokenConfig.decimals);
-      logger.debug(
-        {
-          wallet: delta.walletAddress,
-          apiTotal: delta.apiAmount,
-          onChain: previousFormatted,
-          delta: humanAmount,
-          token: tokenName,
-        },
-        'Transfer successful'
-      );
-
-      await logTransaction(
-        runId,
-        walletPairId,
-        delta.deltaAmount,
-        batchResult.txSignature!,
-        'success'
-      );
-
-      results.push({
-        walletAddress: delta.walletAddress,
-        ethAddress: delta.ethAddress,
-        amount: delta.deltaAmount,
-        txSignature: batchResult.txSignature!,
-        status: 'success',
-      });
-
-      existingRecords.set(makeSnapshotKey(delta.walletAddress, delta.ethAddress), delta.deltaAmount);
-      successCount++;
-    } else {
-      logger.error(
-        {
-          wallet: delta.walletAddress,
-          ethAddress: delta.ethAddress,
-          amount: humanAmount,
-          token: tokenName,
-          error: batchResult.errorMessage,
-        },
-        'Transfer failed'
-      );
-
-      await logTransaction(
-        runId,
-        walletPairId,
-        delta.deltaAmount,
-        '',
-        'failed',
-        batchResult.errorMessage
-      );
-
-      results.push({
-        walletAddress: delta.walletAddress,
-        ethAddress: delta.ethAddress,
-        amount: delta.deltaAmount,
-        txSignature: null,
-        status: 'failed',
-        errorMessage: batchResult.errorMessage,
-      });
-      failCount++;
-    }
-  }
-
-  return { results, successCount, failCount };
 }
 
 /**
- * Process airdrops in batches with concurrency
+ * Process multi-token airdrops with concurrency
  */
-async function processBatchedAirdrops(
+async function processMultiTokenAirdrops(
   connection: Connection,
   payer: Keypair,
   config: Config,
-  tokenConfig: TokenConfig,
-  tokenProgramId: PublicKey,
+  xnmConfig: TokenConfig,
+  xblkConfig: TokenConfig,
   runId: bigint,
-  deltas: DeltaResult[],
-  onChainTokenType: TokenTypeValue,
-  existingRecords: Map<string, bigint>
-): Promise<AirdropResult[]> {
-  const results: AirdropResult[] = [];
-  const tokenName = tokenConfig.type.toUpperCase();
-  const { batchSize, concurrency } = config;
-
-  // Split deltas into batches
-  const batches: DeltaResult[][] = [];
-  for (let i = 0; i < deltas.length; i += batchSize) {
-    batches.push(deltas.slice(i, i + batchSize));
-  }
-  const totalBatches = batches.length;
+  deltas: MultiTokenDelta[],
+  snapshots: Map<string, OnChainSnapshot>
+): Promise<MultiTokenAirdropResult[]> {
+  const results: MultiTokenAirdropResult[] = [];
+  const { concurrency } = config;
 
   let successCount = 0;
   let failCount = 0;
-  let processedBatches = 0;
 
-  // Handle dry run (no concurrency needed)
+  // Handle dry run
   if (config.dryRun) {
-    for (const batch of batches) {
-      for (const delta of batch) {
-        logger.debug(
-          {
-            wallet: delta.walletAddress,
-            amount: formatTokenAmount(delta.deltaAmount, tokenConfig.decimals),
-            token: tokenName,
-          },
-          '[DRY RUN] Would send tokens'
-        );
-        results.push({
-          walletAddress: delta.walletAddress,
-          ethAddress: delta.ethAddress,
-          amount: delta.deltaAmount,
-          txSignature: null,
-          status: 'success',
-        });
-      }
-      successCount += batch.length;
-      processedBatches++;
-      if (processedBatches % 100 === 0 || processedBatches === totalBatches) {
-        const progress = ((processedBatches / totalBatches) * 100).toFixed(1);
-        logger.info(
-          { progress: `${progress}%`, batches: `${processedBatches}/${totalBatches}`, success: successCount },
-          'Progress'
-        );
+    for (let i = 0; i < deltas.length; i++) {
+      const delta = deltas[i];
+      logger.debug({
+        wallet: delta.walletAddress,
+        xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
+        xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
+      }, '[DRY RUN] Would send tokens');
+
+      results.push({
+        walletAddress: delta.walletAddress,
+        ethAddress: delta.ethAddress,
+        xnmAmount: delta.xnmDelta,
+        xblkAmount: delta.xblkDelta,
+        txSignature: null,
+        status: 'success',
+      });
+      successCount++;
+
+      if ((i + 1) % 100 === 0 || i === deltas.length - 1) {
+        const progress = (((i + 1) / deltas.length) * 100).toFixed(1);
+        logger.info({ progress: `${progress}%`, processed: `${i + 1}/${deltas.length}`, success: successCount }, 'Progress');
       }
     }
     return results;
   }
 
-  // Process batches with concurrency
-  for (let i = 0; i < batches.length; i += concurrency) {
-    const concurrentBatches = batches.slice(i, i + concurrency);
-    const progress = ((Math.min(i + concurrency, totalBatches) / totalBatches) * 100).toFixed(1);
+  // Process with concurrency (one recipient per transaction)
+  for (let i = 0; i < deltas.length; i += concurrency) {
+    const batch = deltas.slice(i, i + concurrency);
+    const progress = ((Math.min(i + concurrency, deltas.length) / deltas.length) * 100).toFixed(1);
 
-    logger.info(
-      {
-        progress: `${progress}%`,
-        batches: `${Math.min(i + concurrency, totalBatches)}/${totalBatches}`,
-        processed: `${i * batchSize}/${deltas.length}`,
-        success: successCount,
-        failed: failCount,
-        concurrent: concurrentBatches.length,
-      },
-      'Progress'
-    );
+    logger.info({
+      progress: `${progress}%`,
+      processed: `${Math.min(i + concurrency, deltas.length)}/${deltas.length}`,
+      success: successCount,
+      failed: failCount,
+      concurrent: batch.length,
+    }, 'Progress');
 
-    // Process concurrent batches in parallel
-    const batchPromises = concurrentBatches.map((batch) =>
-      processSingleBatch(
+    // Process batch concurrently
+    const batchPromises = batch.map((delta) => {
+      const snapshotKey = makeSnapshotKey(delta.walletAddress, delta.ethAddress);
+      const hasExistingRecord = snapshots.has(snapshotKey);
+
+      return processSingleRecipient(
         connection,
         payer,
         config,
-        tokenConfig,
-        tokenProgramId,
+        xnmConfig,
+        xblkConfig,
         runId,
-        batch,
-        onChainTokenType,
-        existingRecords
-      )
-    );
+        delta,
+        hasExistingRecord
+      );
+    });
 
     const batchResults = await Promise.all(batchPromises);
 
-    // Collect results
-    for (const batchResult of batchResults) {
-      results.push(...batchResult.results);
-      successCount += batchResult.successCount;
-      failCount += batchResult.failCount;
+    for (const result of batchResults) {
+      results.push(result);
+      if (result.status === 'success') {
+        successCount++;
+      } else {
+        failCount++;
+      }
     }
-
-    processedBatches += concurrentBatches.length;
   }
 
-  // Final progress log
-  logger.info(
-    {
-      progress: '100%',
-      batches: `${totalBatches}/${totalBatches}`,
-      success: successCount,
-      failed: failCount,
-    },
-    'Batch processing complete'
-  );
+  // Final progress
+  logger.info({
+    progress: '100%',
+    processed: `${deltas.length}/${deltas.length}`,
+    success: successCount,
+    failed: failCount,
+  }, 'Processing complete');
 
   return results;
 }
