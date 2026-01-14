@@ -5,6 +5,8 @@ import {
   sendAndConfirmTransaction,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
 } from '@solana/web3.js';
 import {
   getOrCreateAssociatedTokenAccount,
@@ -15,6 +17,7 @@ import {
 } from '@solana/spl-token';
 import { TokenConfig } from '../config.js';
 import { formatTokenAmount } from '../utils/format.js';
+import logger from '../utils/logger.js';
 
 export interface TransferResult {
   success: boolean;
@@ -33,6 +36,12 @@ export interface BatchTransferResult {
   txSignature?: string;
   errorMessage?: string;
   items: BatchTransferItem[];
+  estimatedFee?: bigint;
+}
+
+export interface FeeEstimate {
+  fee: bigint;
+  feeWithBuffer: bigint;
 }
 
 /**
@@ -63,6 +72,59 @@ export async function getPayerBalance(
     balance,
     formatted: formatTokenAmount(balance, tokenConfig.decimals),
     account: payerTokenAccount.address,
+  };
+}
+
+/**
+ * Simulate a transaction and estimate the fee
+ */
+export async function simulateAndEstimateFee(
+  connection: Connection,
+  transaction: Transaction,
+  payer: Keypair,
+  feeBufferMultiplier: number
+): Promise<FeeEstimate> {
+  // Get latest blockhash for simulation
+  const { blockhash } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = payer.publicKey;
+
+  // Create a versioned transaction for simulation
+  const messageV0 = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: blockhash,
+    instructions: transaction.instructions,
+  }).compileToV0Message();
+
+  const versionedTx = new VersionedTransaction(messageV0);
+
+  // Simulate to get compute units used
+  const simulation = await connection.simulateTransaction(versionedTx, {
+    sigVerify: false,
+  });
+
+  if (simulation.value.err) {
+    logger.warn(
+      { error: simulation.value.err },
+      'Transaction simulation failed'
+    );
+  }
+
+  // Get the fee for the transaction
+  const fee = await connection.getFeeForMessage(messageV0);
+
+  if (fee.value === null) {
+    throw new Error('Failed to estimate transaction fee');
+  }
+
+  const baseFee = BigInt(fee.value);
+  const feeWithBuffer = BigInt(
+    Math.ceil(Number(baseFee) * feeBufferMultiplier)
+  );
+
+  return {
+    fee: baseFee,
+    feeWithBuffer,
   };
 }
 
@@ -157,14 +219,15 @@ export async function transferTokens(
 
 /**
  * Transfer tokens to multiple recipients in a single transaction
- * Also includes on-chain record update instructions
+ * Simulates the transaction first to estimate fees
  */
 export async function batchTransferTokens(
   connection: Connection,
   payer: Keypair,
   tokenConfig: TokenConfig,
   items: BatchTransferItem[],
-  recordUpdateInstructions: TransactionInstruction[]
+  recordUpdateInstructions: TransactionInstruction[],
+  feeBufferMultiplier: number = 1.2
 ): Promise<BatchTransferResult> {
   try {
     if (items.length === 0) {
@@ -187,7 +250,9 @@ export async function batchTransferTokens(
     );
 
     // Get all recipient ATAs and check existence in batch
-    const recipients = items.map((item) => new PublicKey(item.recipientAddress));
+    const recipients = items.map(
+      (item) => new PublicKey(item.recipientAddress)
+    );
     const ataAddresses = recipients.map((recipient) =>
       getAssociatedTokenAddressSync(
         tokenConfig.mint,
@@ -234,7 +299,39 @@ export async function batchTransferTokens(
       transaction.add(instruction);
     }
 
-    // Send transaction
+    // Simulate and estimate fee
+    const feeEstimate = await simulateAndEstimateFee(
+      connection,
+      transaction,
+      payer,
+      feeBufferMultiplier
+    );
+
+    logger.debug(
+      {
+        baseFee: feeEstimate.fee.toString(),
+        feeWithBuffer: feeEstimate.feeWithBuffer.toString(),
+        bufferMultiplier: feeBufferMultiplier,
+      },
+      'Transaction fee estimated'
+    );
+
+    // Check if payer has enough for fees
+    const payerBalance = await connection.getBalance(payer.publicKey);
+    if (BigInt(payerBalance) < feeEstimate.feeWithBuffer) {
+      return {
+        success: false,
+        errorMessage: `Insufficient balance for fees: have ${payerBalance} lamports, need ${feeEstimate.feeWithBuffer} lamports`,
+        items,
+        estimatedFee: feeEstimate.feeWithBuffer,
+      };
+    }
+
+    // Get fresh blockhash and send transaction
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = payer.publicKey;
+
     const signature = await sendAndConfirmTransaction(
       connection,
       transaction,
@@ -246,6 +343,7 @@ export async function batchTransferTokens(
       success: true,
       txSignature: signature,
       items,
+      estimatedFee: feeEstimate.feeWithBuffer,
     };
   } catch (error) {
     const errorMessage =
@@ -256,4 +354,72 @@ export async function batchTransferTokens(
       items,
     };
   }
+}
+
+/**
+ * Estimate total fees for all batches
+ */
+export async function estimateTotalFees(
+  connection: Connection,
+  payer: Keypair,
+  tokenConfig: TokenConfig,
+  totalRecipients: number,
+  batchSize: number,
+  recordInstructionsPerBatch: number,
+  feeBufferMultiplier: number
+): Promise<{ totalFee: bigint; perBatchFee: bigint; numBatches: number }> {
+  // Create a sample transaction with batchSize transfers to estimate per-batch fee
+  const sampleTransaction = new Transaction();
+
+  // Get payer's token account
+  const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+    connection,
+    payer,
+    tokenConfig.mint,
+    payer.publicKey,
+    false,
+    undefined,
+    undefined,
+    TOKEN_2022_PROGRAM_ID
+  );
+
+  // Add sample ATA creation and transfer instructions
+  // Assume worst case: all ATAs need to be created
+  for (let i = 0; i < batchSize; i++) {
+    // Use payer's address as dummy recipient for estimation
+    const dummyAta = getAssociatedTokenAddressSync(
+      tokenConfig.mint,
+      payer.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    // Add transfer instruction (ATA creation adds significant cost)
+    const transferInstruction = createTransferInstruction(
+      fromTokenAccount.address,
+      dummyAta,
+      payer.publicKey,
+      1n,
+      [],
+      TOKEN_2022_PROGRAM_ID
+    );
+    sampleTransaction.add(transferInstruction);
+  }
+
+  // Estimate fee for this sample batch
+  const feeEstimate = await simulateAndEstimateFee(
+    connection,
+    sampleTransaction,
+    payer,
+    feeBufferMultiplier
+  );
+
+  const numBatches = Math.ceil(totalRecipients / batchSize);
+  const totalFee = feeEstimate.feeWithBuffer * BigInt(numBatches);
+
+  return {
+    totalFee,
+    perBatchFee: feeEstimate.feeWithBuffer,
+    numBatches,
+  };
 }
