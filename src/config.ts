@@ -5,6 +5,7 @@ dotenv.config();
 
 export interface Config {
   tokenMint: PublicKey;
+  airdropTrackerProgramId: PublicKey;
   rpcEndpoint: string;
   decimals: number;
   dryRun: boolean;
@@ -16,6 +17,7 @@ export interface Config {
 export function loadConfig(): Config {
   const requiredVars = [
     'TOKEN_MINT',
+    'AIRDROP_TRACKER_PROGRAM_ID',
     'RPC_ENDPOINT',
     'KEYPAIR_PATH',
     'DATABASE_URL',
@@ -37,6 +39,9 @@ export function loadConfig(): Config {
 
   return {
     tokenMint: new PublicKey(process.env.TOKEN_MINT!),
+    airdropTrackerProgramId: new PublicKey(
+      process.env.AIRDROP_TRACKER_PROGRAM_ID!
+    ),
     rpcEndpoint: process.env.RPC_ENDPOINT!,
     decimals: parseInt(process.env.DECIMALS || '9'),
     dryRun: process.env.DRY_RUN === 'true',

@@ -12,7 +12,6 @@ model Wallet {
   address      String               @unique @db.VarChar(44)
   createdAt    DateTime             @default(now())
   ethMappings  WalletEthMapping[]
-  snapshots    AirdropSnapshot[]
   transactions AirdropTransaction[]
 
   @@index([address])
@@ -38,33 +37,17 @@ model WalletEthMapping {
   @@unique([walletId, ethAddressId])
 }
 
+// AirdropRun is now primarily stored on-chain.
+// This table stores the on-chain run ID for transaction logging purposes.
 model AirdropRun {
-  id              Int                  @id @default(autoincrement())
-  runDate         DateTime             @default(now())
-  runType         String               @db.VarChar(10)
-  totalRecipients Int                  @default(0)
-  totalAmount     BigInt               @default(0)
-  dryRun          Boolean              @default(false)
-  snapshots       AirdropSnapshot[]
-  transactions    AirdropTransaction[]
-}
-
-model AirdropSnapshot {
-  id          Int        @id @default(autoincrement())
-  runId       Int
-  walletId    Int
-  apiAmount   String
-  tokenAmount BigInt
-  createdAt   DateTime   @default(now())
-  run         AirdropRun @relation(fields: [runId], references: [id])
-  wallet      Wallet     @relation(fields: [walletId], references: [id])
-
-  @@index([walletId, createdAt(sort: Desc)])
+  id           BigInt                 @id // On-chain run ID (not auto-increment)
+  createdAt    DateTime               @default(now())
+  transactions AirdropTransaction[]
 }
 
 model AirdropTransaction {
   id           Int        @id @default(autoincrement())
-  runId        Int
+  runId        BigInt
   walletId     Int
   amount       BigInt
   txSignature  String?    @db.VarChar(88)

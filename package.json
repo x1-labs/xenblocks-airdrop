@@ -21,8 +21,9 @@
   },
   "author": "",
   "license": "ISC",
-  "description": "XNM token airdrop script with PostgreSQL support and delta calculations",
+  "description": "XNM token airdrop script with on-chain tracking and delta calculations",
   "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
     "@prisma/client": "^6.2.1",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.2",
