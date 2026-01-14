@@ -18,6 +18,7 @@ export interface Config {
   dryRun: boolean;
   keypairPath: string;
   apiEndpoint: string;
+  minFeeBalance: bigint;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk'];
@@ -87,6 +88,10 @@ export function loadConfig(): Config {
   // Build token configs for each requested token type
   const tokens = tokenTypes.map((type) => getTokenConfig(type));
 
+  // Parse minimum fee balance (default 10 native tokens)
+  const minFeeBalanceInput = parseFloat(process.env.MIN_FEE_BALANCE || '10');
+  const minFeeBalance = BigInt(Math.floor(minFeeBalanceInput * 1e9));
+
   return {
     tokens,
     airdropTrackerProgramId: new PublicKey(
@@ -98,5 +103,6 @@ export function loadConfig(): Config {
     apiEndpoint:
       process.env.API_ENDPOINT ||
       'https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true',
+    minFeeBalance,
   };
 }

@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { Config, TokenConfig, TokenType } from '../config.js';
 import { Miner, DeltaResult, AirdropResult } from './types.js';
 import { calculateDeltas, calculateTotalAmount } from './delta.js';
@@ -60,6 +60,31 @@ export async function executeAirdrop(
     { programId: config.airdropTrackerProgramId.toString() },
     'Tracker Program'
   );
+
+  // Check native balance for transaction fees
+  const nativeBalance = await connection.getBalance(payer.publicKey);
+  const nativeBalanceFormatted = (nativeBalance / LAMPORTS_PER_SOL).toFixed(4);
+  const minFeeBalanceFormatted = (
+    Number(config.minFeeBalance) / LAMPORTS_PER_SOL
+  ).toFixed(4);
+
+  logger.info(
+    { balance: nativeBalanceFormatted },
+    'Native balance for fees'
+  );
+
+  if (BigInt(nativeBalance) < config.minFeeBalance) {
+    logger.fatal(
+      {
+        current: nativeBalanceFormatted,
+        required: minFeeBalanceFormatted,
+      },
+      'Insufficient native balance for transaction fees'
+    );
+    throw new Error(
+      `Insufficient native balance: ${nativeBalanceFormatted} < ${minFeeBalanceFormatted} required`
+    );
+  }
 
   // Check if global state is initialized
   const globalState = await getGlobalState(
