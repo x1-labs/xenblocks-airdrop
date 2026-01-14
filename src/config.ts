@@ -22,6 +22,7 @@ export interface Config {
   apiEndpoint: string;
   minFeeBalance: bigint;
   batchSize: number;
+  concurrency: number;
   feeBufferMultiplier: number;
 }
 
@@ -95,8 +96,11 @@ export function loadConfig(): Config {
   const minFeeBalanceInput = parseFloat(process.env.MIN_FEE_BALANCE || '10');
   const minFeeBalance = BigInt(Math.floor(minFeeBalanceInput * 1e9));
 
-  // Parse batch size (default 5 transfers per transaction)
-  const batchSize = Math.max(1, parseInt(process.env.BATCH_SIZE || '5', 10));
+  // Parse batch size (default 3 transfers per transaction)
+  const batchSize = Math.max(1, parseInt(process.env.BATCH_SIZE || '3', 10));
+
+  // Parse concurrency (default 4 concurrent transactions)
+  const concurrency = Math.max(1, parseInt(process.env.CONCURRENCY || '4', 10));
 
   // Parse fee buffer multiplier (default 1.2 = 20% buffer)
   const feeBufferMultiplier = Math.max(
@@ -123,6 +127,7 @@ export function loadConfig(): Config {
       'https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true',
     minFeeBalance,
     batchSize,
+    concurrency,
     feeBufferMultiplier,
   };
 }

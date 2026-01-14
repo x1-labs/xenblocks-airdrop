@@ -23,6 +23,7 @@ import {
 } from '../db/queries.js';
 import {
   fetchAllOnChainSnapshots,
+  makeSnapshotKey,
   createOnChainRun,
   updateOnChainRunTotals,
   initializeState,
@@ -53,6 +54,19 @@ function isValidSolanaAddress(address: string): boolean {
 }
 
 /**
+ * Check if an address is on the ed25519 curve (can own an ATA)
+ * PDA addresses and program IDs are off-curve and cannot own standard ATAs
+ */
+function isOnCurveAddress(address: string): boolean {
+  try {
+    const pubkey = new PublicKey(address);
+    return PublicKey.isOnCurve(pubkey.toBytes());
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch miners from the API
  */
 export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
@@ -61,18 +75,31 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
   const response = await fetch(apiEndpoint);
   const data = (await response.json()) as { miners: Miner[] };
 
-  const validMiners = data.miners.filter(
-    (miner) =>
-      miner.solAddress &&
-      miner.xnm &&
-      isValidSolanaAddress(miner.solAddress)
-  );
-
-  const skipped = data.miners.length - validMiners.length;
-  console.log(`✅ Found ${validMiners.length} valid miners`);
-  if (skipped > 0) {
-    console.log(`   ⚠️  Skipped ${skipped} miners with invalid/missing addresses`);
+  // First filter: valid address format and has required fields
+  const validFormat: Miner[] = [];
+  for (const miner of data.miners) {
+    if (!miner.solAddress || !miner.xnm) {
+      logger.warn({ ethAddress: miner.account }, 'Skipped miner with missing solAddress or xnm');
+      continue;
+    }
+    if (!isValidSolanaAddress(miner.solAddress)) {
+      logger.warn({ wallet: miner.solAddress, ethAddress: miner.account }, 'Skipped invalid Solana address');
+      continue;
+    }
+    validFormat.push(miner);
   }
+
+  // Second filter: must be on-curve (can own an ATA)
+  const validMiners: Miner[] = [];
+  for (const miner of validFormat) {
+    if (!isOnCurveAddress(miner.solAddress)) {
+      logger.warn({ wallet: miner.solAddress, ethAddress: miner.account }, 'Skipped off-curve address (PDA/program)');
+      continue;
+    }
+    validMiners.push(miner);
+  }
+
+  logger.info({ count: validMiners.length }, 'Found valid miners');
   return validMiners;
 }
 
@@ -91,6 +118,7 @@ export async function executeAirdrop(
     {
       dryRun: config.dryRun,
       batchSize: config.batchSize,
+      concurrency: config.concurrency,
       feeBuffer: `${((config.feeBufferMultiplier - 1) * 100).toFixed(0)}%`,
     },
     'Configuration'
@@ -250,6 +278,7 @@ async function executeTokenAirdrop(
         tokenConfig,
         config.tokenProgramId,
         deltas.length,
+        lastSnapshot.size,
         config.batchSize,
         config.feeBufferMultiplier
       );
@@ -276,7 +305,7 @@ async function executeTokenAirdrop(
 
   // Execute transfers in batches
   logger.info(
-    { token: tokenName, batchSize: config.batchSize },
+    { token: tokenName, batchSize: config.batchSize, concurrency: config.concurrency },
     'Starting batched airdrop execution...'
   );
   const results = await processBatchedAirdrops(
@@ -323,7 +352,164 @@ async function executeTokenAirdrop(
 }
 
 /**
- * Process airdrops in batches
+ * Process a single batch of transfers
+ */
+async function processSingleBatch(
+  connection: Connection,
+  payer: Keypair,
+  config: Config,
+  tokenConfig: TokenConfig,
+  tokenProgramId: PublicKey,
+  runId: bigint,
+  batch: DeltaResult[],
+  onChainTokenType: TokenTypeValue,
+  existingRecords: Map<string, bigint>
+): Promise<{ results: AirdropResult[]; successCount: number; failCount: number }> {
+  const results: AirdropResult[] = [];
+  const tokenName = tokenConfig.type.toUpperCase();
+
+  // Prepare batch transfer items
+  const transferItems: BatchTransferItem[] = batch.map((delta) => ({
+    recipientAddress: delta.walletAddress,
+    ethAddress: delta.ethAddress,
+    amount: delta.deltaAmount,
+  }));
+
+  // Build record update instructions for all items in batch
+  const recordInstructions: TransactionInstruction[] = [];
+  for (const delta of batch) {
+    const solWallet = new PublicKey(delta.walletAddress);
+    const recordKey = makeSnapshotKey(delta.walletAddress, delta.ethAddress);
+    const hasExistingRecord = existingRecords.has(recordKey);
+
+    if (hasExistingRecord) {
+      recordInstructions.push(
+        createUpdateRecordInstruction(
+          config.airdropTrackerProgramId,
+          payer.publicKey,
+          solWallet,
+          delta.ethAddress,
+          onChainTokenType,
+          delta.deltaAmount
+        )
+      );
+    } else {
+      recordInstructions.push(
+        createInitializeAndUpdateInstruction(
+          config.airdropTrackerProgramId,
+          payer.publicKey,
+          solWallet,
+          delta.ethAddress,
+          onChainTokenType,
+          delta.deltaAmount
+        )
+      );
+    }
+  }
+
+  // Execute batched transfer with record updates
+  const batchResult = await batchTransferTokens(
+    connection,
+    payer,
+    tokenConfig,
+    tokenProgramId,
+    transferItems,
+    recordInstructions,
+    config.feeBufferMultiplier
+  );
+
+  // Log transaction result once per batch
+  if (batchResult.success) {
+    logger.trace(
+      { tx: batchResult.txSignature, simulatedCU: batchResult.simulatedCU, limitCU: batchResult.computeUnitLimit },
+      'Transaction confirmed'
+    );
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  // Process results for each item in the batch
+  for (const delta of batch) {
+    const humanAmount = formatTokenAmount(
+      delta.deltaAmount,
+      tokenConfig.decimals
+    );
+
+    const walletPairId = await getOrCreateWalletPair(
+      delta.walletAddress,
+      delta.ethAddress
+    );
+
+    if (batchResult.success) {
+      const previousFormatted = formatTokenAmount(delta.previousAmount, tokenConfig.decimals);
+      logger.debug(
+        {
+          wallet: delta.walletAddress,
+          apiTotal: delta.apiAmount,
+          onChain: previousFormatted,
+          delta: humanAmount,
+          token: tokenName,
+        },
+        'Transfer successful'
+      );
+
+      await logTransaction(
+        runId,
+        walletPairId,
+        delta.deltaAmount,
+        batchResult.txSignature!,
+        'success'
+      );
+
+      results.push({
+        walletAddress: delta.walletAddress,
+        ethAddress: delta.ethAddress,
+        amount: delta.deltaAmount,
+        txSignature: batchResult.txSignature!,
+        status: 'success',
+      });
+
+      existingRecords.set(makeSnapshotKey(delta.walletAddress, delta.ethAddress), delta.deltaAmount);
+      successCount++;
+    } else {
+      logger.error(
+        {
+          wallet: delta.walletAddress,
+          ethAddress: delta.ethAddress,
+          amount: humanAmount,
+          token: tokenName,
+          error: batchResult.errorMessage,
+        },
+        'Transfer failed'
+      );
+
+      await logTransaction(
+        runId,
+        walletPairId,
+        delta.deltaAmount,
+        '',
+        'failed',
+        batchResult.errorMessage
+      );
+
+      results.push({
+        walletAddress: delta.walletAddress,
+        ethAddress: delta.ethAddress,
+        amount: delta.deltaAmount,
+        txSignature: null,
+        status: 'failed',
+        errorMessage: batchResult.errorMessage,
+      });
+      failCount++;
+    }
+  }
+
+  return { results, successCount, failCount };
+}
+
+/**
+ * Process airdrops in batches with concurrency
  */
 async function processBatchedAirdrops(
   connection: Connection,
@@ -338,36 +524,27 @@ async function processBatchedAirdrops(
 ): Promise<AirdropResult[]> {
   const results: AirdropResult[] = [];
   const tokenName = tokenConfig.type.toUpperCase();
-  const { batchSize } = config;
+  const { batchSize, concurrency } = config;
 
-  // Process in batches
-  const totalBatches = Math.ceil(deltas.length / batchSize);
+  // Split deltas into batches
+  const batches: DeltaResult[][] = [];
+  for (let i = 0; i < deltas.length; i += batchSize) {
+    batches.push(deltas.slice(i, i + batchSize));
+  }
+  const totalBatches = batches.length;
 
-  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-    const start = batchIndex * batchSize;
-    const end = Math.min(start + batchSize, deltas.length);
-    const batch = deltas.slice(start, end);
+  let successCount = 0;
+  let failCount = 0;
+  let processedBatches = 0;
 
-    logger.info(
-      {
-        batch: batchIndex + 1,
-        totalBatches,
-        items: batch.length,
-      },
-      'Processing batch'
-    );
-
-    // Handle dry run
-    if (config.dryRun) {
+  // Handle dry run (no concurrency needed)
+  if (config.dryRun) {
+    for (const batch of batches) {
       for (const delta of batch) {
-        const humanAmount = formatTokenAmount(
-          delta.deltaAmount,
-          tokenConfig.decimals
-        );
-        logger.info(
+        logger.debug(
           {
             wallet: delta.walletAddress,
-            amount: humanAmount,
+            amount: formatTokenAmount(delta.deltaAmount, tokenConfig.decimals),
             token: tokenName,
           },
           '[DRY RUN] Would send tokens'
@@ -380,137 +557,73 @@ async function processBatchedAirdrops(
           status: 'success',
         });
       }
-      continue;
-    }
-
-    // Prepare batch transfer items
-    const transferItems: BatchTransferItem[] = batch.map((delta) => ({
-      recipientAddress: delta.walletAddress,
-      ethAddress: delta.ethAddress,
-      amount: delta.deltaAmount,
-    }));
-
-    // Build record update instructions for all items in batch
-    const recordInstructions: TransactionInstruction[] = [];
-    for (const delta of batch) {
-      const solWallet = new PublicKey(delta.walletAddress);
-      const hasExistingRecord = existingRecords.has(delta.walletAddress);
-
-      if (hasExistingRecord) {
-        // Record exists, use update instruction
-        recordInstructions.push(
-          createUpdateRecordInstruction(
-            config.airdropTrackerProgramId,
-            payer.publicKey,
-            solWallet,
-            delta.ethAddress,
-            onChainTokenType,
-            delta.deltaAmount
-          )
-        );
-      } else {
-        // Record doesn't exist, use initialize and update instruction
-        recordInstructions.push(
-          createInitializeAndUpdateInstruction(
-            config.airdropTrackerProgramId,
-            payer.publicKey,
-            solWallet,
-            delta.ethAddress,
-            onChainTokenType,
-            delta.deltaAmount
-          )
+      successCount += batch.length;
+      processedBatches++;
+      if (processedBatches % 100 === 0 || processedBatches === totalBatches) {
+        const progress = ((processedBatches / totalBatches) * 100).toFixed(1);
+        logger.info(
+          { progress: `${progress}%`, batches: `${processedBatches}/${totalBatches}`, success: successCount },
+          'Progress'
         );
       }
     }
+    return results;
+  }
 
-    // Execute batched transfer with record updates
-    const batchResult = await batchTransferTokens(
-      connection,
-      payer,
-      tokenConfig,
-      tokenProgramId,
-      transferItems,
-      recordInstructions,
-      config.feeBufferMultiplier
+  // Process batches with concurrency
+  for (let i = 0; i < batches.length; i += concurrency) {
+    const concurrentBatches = batches.slice(i, i + concurrency);
+    const progress = ((Math.min(i + concurrency, totalBatches) / totalBatches) * 100).toFixed(1);
+
+    logger.info(
+      {
+        progress: `${progress}%`,
+        batches: `${Math.min(i + concurrency, totalBatches)}/${totalBatches}`,
+        processed: `${i * batchSize}/${deltas.length}`,
+        success: successCount,
+        failed: failCount,
+        concurrent: concurrentBatches.length,
+      },
+      'Progress'
     );
 
-    // Process results for each item in the batch
-    for (const delta of batch) {
-      const humanAmount = formatTokenAmount(
-        delta.deltaAmount,
-        tokenConfig.decimals
-      );
+    // Process concurrent batches in parallel
+    const batchPromises = concurrentBatches.map((batch) =>
+      processSingleBatch(
+        connection,
+        payer,
+        config,
+        tokenConfig,
+        tokenProgramId,
+        runId,
+        batch,
+        onChainTokenType,
+        existingRecords
+      )
+    );
 
-      // Get or create wallet pair for logging
-      const walletPairId = await getOrCreateWalletPair(
-        delta.walletAddress,
-        delta.ethAddress
-      );
+    const batchResults = await Promise.all(batchPromises);
 
-      if (batchResult.success) {
-        logger.info(
-          {
-            wallet: delta.walletAddress,
-            amount: humanAmount,
-            token: tokenName,
-          },
-          'Transfer successful'
-        );
-
-        await logTransaction(
-          runId,
-          walletPairId,
-          delta.deltaAmount,
-          batchResult.txSignature!,
-          'success'
-        );
-
-        results.push({
-          walletAddress: delta.walletAddress,
-          ethAddress: delta.ethAddress,
-          amount: delta.deltaAmount,
-          txSignature: batchResult.txSignature!,
-          status: 'success',
-        });
-
-        // Update existingRecords for subsequent batches
-        existingRecords.set(delta.walletAddress, delta.deltaAmount);
-      } else {
-        logger.error(
-          {
-            wallet: delta.walletAddress,
-            error: batchResult.errorMessage,
-          },
-          'Transfer failed'
-        );
-
-        await logTransaction(
-          runId,
-          walletPairId,
-          delta.deltaAmount,
-          '',
-          'failed',
-          batchResult.errorMessage
-        );
-
-        results.push({
-          walletAddress: delta.walletAddress,
-          ethAddress: delta.ethAddress,
-          amount: delta.deltaAmount,
-          txSignature: null,
-          status: 'failed',
-          errorMessage: batchResult.errorMessage,
-        });
-      }
+    // Collect results
+    for (const batchResult of batchResults) {
+      results.push(...batchResult.results);
+      successCount += batchResult.successCount;
+      failCount += batchResult.failCount;
     }
 
-    if (batchResult.success) {
-      logger.debug(
-        { signature: batchResult.txSignature },
-        'Batch transaction confirmed'
-      );
-    }
+    processedBatches += concurrentBatches.length;
   }
+
+  // Final progress log
+  logger.info(
+    {
+      progress: '100%',
+      batches: `${totalBatches}/${totalBatches}`,
+      success: successCount,
+      failed: failCount,
+    },
+    'Batch processing complete'
+  );
 
   return results;
 }

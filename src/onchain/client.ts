@@ -195,8 +195,15 @@ export async function getOnChainAmount(
 }
 
 /**
+ * Create a composite key for the snapshot map (solAddress:ethAddress)
+ */
+export function makeSnapshotKey(solAddress: string, ethAddress: string): string {
+  return `${solAddress}:${ethAddress}`;
+}
+
+/**
  * Fetch on-chain snapshots for all miners in batch
- * Returns a Map of solAddress -> airdropped amount for the specified token
+ * Returns a Map of "solAddress:ethAddress" -> airdropped amount for the specified token
  */
 export async function fetchAllOnChainSnapshots(
   connection: Connection,
@@ -236,7 +243,8 @@ export async function fetchAllOnChainSnapshots(
           tokenType === TOKEN_TYPE.XNM
             ? record.xnmAirdropped
             : record.xblkAirdropped;
-        snapshots.set(batch[j].miner.solAddress, amount);
+        const key = makeSnapshotKey(batch[j].miner.solAddress, batch[j].miner.ethAddress);
+        snapshots.set(key, amount);
       }
       // If account is null, wallet has no on-chain record (new wallet)
     }

@@ -1,6 +1,7 @@
 import { Miner, DeltaResult } from './types.js';
 import { convertApiAmountToTokenAmount } from '../utils/format.js';
 import { TokenType } from '../config.js';
+import { makeSnapshotKey } from '../onchain/client.js';
 
 /**
  * Get the API amount for the specified token type from a miner
@@ -27,7 +28,8 @@ export function calculateDeltas(
   for (const miner of currentMiners) {
     const apiAmount = getTokenAmount(miner, tokenType);
     const currentAmount = convertApiAmountToTokenAmount(apiAmount);
-    const previousAmount = lastSnapshot.get(miner.solAddress) ?? 0n;
+    const snapshotKey = makeSnapshotKey(miner.solAddress, miner.account);
+    const previousAmount = lastSnapshot.get(snapshotKey) ?? 0n;
     const deltaAmount = currentAmount - previousAmount;
 
     // Only include positive deltas

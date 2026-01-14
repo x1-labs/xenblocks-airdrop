@@ -3,10 +3,12 @@ import {
   Keypair,
   PublicKey,
   sendAndConfirmTransaction,
+  SendTransactionError,
   Transaction,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
+  ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
   getOrCreateAssociatedTokenAccount,
@@ -17,6 +19,96 @@ import {
 import { TokenConfig } from '../config.js';
 import { formatTokenAmount } from '../utils/format.js';
 import logger from '../utils/logger.js';
+
+/**
+ * Extract detailed error information from Solana errors
+ */
+function extractErrorDetails(error: unknown): string {
+  if (error instanceof SendTransactionError) {
+    const logs = error.logs;
+    const message = error.message;
+
+    // Parse the error for common issues
+    let details = message;
+
+    if (logs && logs.length > 0) {
+      // Find the most relevant error log
+      const errorLog = logs.find(log =>
+        log.includes('Error') ||
+        log.includes('failed') ||
+        log.includes('insufficient')
+      );
+      if (errorLog) {
+        details += ` | Log: ${errorLog}`;
+      }
+    }
+
+    // Decode common error codes
+    if (message.includes('IllegalOwner')) {
+      details = 'IllegalOwner: Recipient account is owned by wrong program (possibly a PDA or system account)';
+    } else if (message.includes('AccountNotInitialized')) {
+      details = 'AccountNotInitialized: On-chain record does not exist';
+    } else if (message.includes('InsufficientFunds')) {
+      details = 'InsufficientFunds: Not enough tokens or SOL for transaction';
+    } else if (message.includes('0x1')) {
+      details = 'InsufficientFunds: Token account has insufficient balance';
+    } else if (message.includes('0xbc4')) {
+      details = 'AccountNotInitialized (0xbc4): Airdrop record PDA not initialized';
+    } else if (message.includes('0xbbb')) {
+      details = 'AccountDidNotDeserialize (0xbbb): Account data format mismatch';
+    }
+
+    return details;
+  }
+
+  if (error instanceof Error) {
+    const message = error.message;
+    const name = error.name;
+    const stack = error.stack;
+
+    // If message is empty, try to extract info from name or stack
+    if (!message || message === '') {
+      if (stack) {
+        // Get first meaningful line from stack
+        const stackLines = stack.split('\n').filter(l => l.trim());
+        const errorType = stackLines[0] || name || 'Error';
+        return `${errorType} (no message)`;
+      }
+      return `${name || 'Error'} (no message)`;
+    }
+
+    // Handle timeout/network errors
+    if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
+      return `Network timeout: ${message}`;
+    }
+    if (message.includes('socket') || message.includes('ECONNRESET')) {
+      return `Connection error: ${message}`;
+    }
+    if (message.includes('blockhash')) {
+      return `Blockhash expired: Transaction took too long, retry needed`;
+    }
+    if (message.includes('429') || message.includes('Too Many Requests')) {
+      return `Rate limited (429): Too many requests, reduce concurrency`;
+    }
+    if (message.includes('503') || message.includes('Service Unavailable')) {
+      return `Service unavailable (503): RPC node overloaded`;
+    }
+
+    return message;
+  }
+
+  // Handle non-Error objects
+  if (error && typeof error === 'object') {
+    try {
+      const str = JSON.stringify(error, null, 0);
+      return str.length > 200 ? str.substring(0, 200) + '...' : str;
+    } catch {
+      return Object.prototype.toString.call(error);
+    }
+  }
+
+  return String(error) || 'Unknown error (null/undefined)';
+}
 
 export interface TransferResult {
   success: boolean;
@@ -36,11 +128,14 @@ export interface BatchTransferResult {
   errorMessage?: string;
   items: BatchTransferItem[];
   estimatedFee?: bigint;
+  simulatedCU?: number;
+  computeUnitLimit?: number;
 }
 
 export interface FeeEstimate {
   fee: bigint;
   feeWithBuffer: bigint;
+  unitsConsumed: number;
 }
 
 /**
@@ -103,28 +198,39 @@ export async function simulateAndEstimateFee(
     sigVerify: false,
   });
 
+  logger.trace({
+    unitsConsumed: simulation.value.unitsConsumed,
+    logsLength: simulation.value.logs?.length,
+    ...(simulation.value.err && { err: JSON.stringify(simulation.value.err) }),
+  }, 'Simulation result');
+
   if (simulation.value.err) {
     logger.warn(
-      { error: simulation.value.err },
+      { error: simulation.value.err, logs: simulation.value.logs?.slice(-5) },
       'Transaction simulation failed'
     );
   }
 
-  // Get the fee for the transaction
-  const fee = await connection.getFeeForMessage(messageV0);
+  // Get compute units consumed from simulation
+  const unitsConsumed = simulation.value.unitsConsumed || 200000;
 
-  if (fee.value === null) {
-    throw new Error('Failed to estimate transaction fee');
-  }
-
-  const baseFee = BigInt(fee.value);
+  // Fee calculation for X1 fork: 10 lamports per compute unit
+  const lamportsPerCU = 10;
+  const baseFee = BigInt(unitsConsumed * lamportsPerCU);
   const feeWithBuffer = BigInt(
     Math.ceil(Number(baseFee) * feeBufferMultiplier)
   );
 
+  logger.trace({
+    unitsConsumed,
+    baseFee: baseFee.toString(),
+    feeWithBuffer: feeWithBuffer.toString(),
+  }, 'Fee calculation');
+
   return {
     fee: baseFee,
     feeWithBuffer,
+    unitsConsumed,
   };
 }
 
@@ -158,7 +264,7 @@ export async function transferTokens(
     const ataAddress = getAssociatedTokenAddressSync(
       tokenConfig.mint,
       recipient,
-      false,
+      true, // allowOwnerOffCurve - support PDA recipients
       tokenProgramId
     );
 
@@ -259,13 +365,14 @@ export async function batchTransferTokens(
       getAssociatedTokenAddressSync(
         tokenConfig.mint,
         recipient,
-        false,
+        true, // allowOwnerOffCurve - support PDA recipients
         tokenProgramId
       )
     );
 
     // Batch check which accounts exist
     const accountInfos = await connection.getMultipleAccountsInfo(ataAddresses);
+    const atasToCreate = accountInfos.filter(info => !info).length;
 
     const transaction = new Transaction();
 
@@ -301,6 +408,13 @@ export async function batchTransferTokens(
       transaction.add(instruction);
     }
 
+    logger.trace({
+      atasToCreate,
+      transfers: items.length,
+      recordInstructions: recordUpdateInstructions.length,
+      totalInstructions: transaction.instructions.length,
+    }, 'Building transaction');
+
     // Simulate and estimate fee
     const feeEstimate = await simulateAndEstimateFee(
       connection,
@@ -309,13 +423,23 @@ export async function batchTransferTokens(
       feeBufferMultiplier
     );
 
+    // Set compute unit limit based on simulation (add 10% buffer)
+    const computeUnitLimit = Math.min(
+      Math.ceil(feeEstimate.unitsConsumed * 1.1),
+      1_400_000
+    );
+
+    const priorityFee = parseInt(process.env.PRIORITY_FEE || '1000', 10);
+    const estimatedPriorityFee = (computeUnitLimit * priorityFee) / 1_000_000;
+
     logger.debug(
       {
-        baseFee: feeEstimate.fee.toString(),
-        feeWithBuffer: feeEstimate.feeWithBuffer.toString(),
-        bufferMultiplier: feeBufferMultiplier,
+        simulatedCU: feeEstimate.unitsConsumed,
+        computeUnitLimit,
+        priorityFeeMicroLamports: priorityFee,
+        estimatedPriorityFeeLamports: estimatedPriorityFee,
       },
-      'Transaction fee estimated'
+      'Transaction compute budget'
     );
 
     // Check if payer has enough for fees
@@ -329,14 +453,33 @@ export async function batchTransferTokens(
       };
     }
 
+    // Rebuild transaction with compute budget instructions
+    const finalTransaction = new Transaction();
+
+    // Set compute unit limit based on simulation
+    finalTransaction.add(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit })
+    );
+
+    // Set priority fee (microlamports per compute unit)
+    // Default to 1000 microlamports = 0.000001 SOL per 1000 CU
+    finalTransaction.add(
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee })
+    );
+
+    // Add all original instructions
+    for (const ix of transaction.instructions) {
+      finalTransaction.add(ix);
+    }
+
     // Get fresh blockhash and send transaction
     const { blockhash } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = payer.publicKey;
+    finalTransaction.recentBlockhash = blockhash;
+    finalTransaction.feePayer = payer.publicKey;
 
     const signature = await sendAndConfirmTransaction(
       connection,
-      transaction,
+      finalTransaction,
       [payer],
       { commitment: 'confirmed' }
     );
@@ -346,10 +489,19 @@ export async function batchTransferTokens(
       txSignature: signature,
       items,
       estimatedFee: feeEstimate.feeWithBuffer,
+      simulatedCU: feeEstimate.unitsConsumed,
+      computeUnitLimit,
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = extractErrorDetails(error);
+    // Log full error details at debug level for troubleshooting
+    logger.debug({
+      errorMessage,
+      errorType: error?.constructor?.name,
+      errorName: error instanceof Error ? error.name : undefined,
+      errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join(' | ') : undefined,
+      rawError: error instanceof Error ? undefined : error,
+    }, 'Batch transfer error details');
     return {
       success: false,
       errorMessage,
@@ -367,10 +519,25 @@ export async function estimateTotalFees(
   tokenConfig: TokenConfig,
   tokenProgramId: PublicKey,
   totalRecipients: number,
+  existingRecordCount: number,
   batchSize: number,
   feeBufferMultiplier: number
 ): Promise<{ totalFee: bigint; perBatchFee: bigint; numBatches: number }> {
-  // Create a sample transaction with batchSize transfers to estimate per-batch fee
+  // Calculate how many new ATAs we expect to create
+  // Recipients with existing records already have ATAs from prior airdrops
+  const newRecipients = totalRecipients - existingRecordCount;
+  const ataCreationRatio = totalRecipients > 0 ? newRecipients / totalRecipients : 1;
+  const expectedAtasPerBatch = Math.ceil(batchSize * ataCreationRatio);
+
+  logger.trace({
+    totalRecipients,
+    existingRecordCount,
+    newRecipients,
+    ataCreationRatio: ataCreationRatio.toFixed(2),
+    expectedAtasPerBatch,
+  }, 'Fee estimation parameters');
+
+  // Create a sample transaction with realistic ATA creation count
   const sampleTransaction = new Transaction();
 
   // Get payer's token account
@@ -385,18 +552,17 @@ export async function estimateTotalFees(
     tokenProgramId
   );
 
-  // Add sample ATA creation and transfer instructions
-  // Assume worst case: all ATAs need to be created
-  for (let i = 0; i < batchSize; i++) {
-    // Use payer's address as dummy recipient for estimation
-    const dummyAta = getAssociatedTokenAddressSync(
-      tokenConfig.mint,
-      payer.publicKey,
-      false,
-      tokenProgramId
-    );
+  // Use payer's existing ATA as dummy for estimation (no creation needed)
+  const dummyAta = getAssociatedTokenAddressSync(
+    tokenConfig.mint,
+    payer.publicKey,
+    false,
+    tokenProgramId
+  );
 
-    // Add transfer instruction (ATA creation adds significant cost)
+  // Add transfer instructions for batch size
+  // We estimate CU based on transfers only - ATA creation adds ~5000 CU each
+  for (let i = 0; i < batchSize; i++) {
     const transferInstruction = createTransferInstruction(
       fromTokenAccount.address,
       dummyAta,
@@ -408,6 +574,9 @@ export async function estimateTotalFees(
     sampleTransaction.add(transferInstruction);
   }
 
+  // Add estimated CU for ATA creations (can't simulate creating same ATA multiple times)
+  const ataCreationCU = expectedAtasPerBatch * 5000;
+
   // Estimate fee for this sample batch
   const feeEstimate = await simulateAndEstimateFee(
     connection,
@@ -416,12 +585,17 @@ export async function estimateTotalFees(
     feeBufferMultiplier
   );
 
+  // Add ATA creation CU to the estimate
+  const totalCU = feeEstimate.unitsConsumed + ataCreationCU;
+  const lamportsPerCU = 10;
+  const perBatchFee = BigInt(Math.ceil(totalCU * lamportsPerCU * feeBufferMultiplier));
+
   const numBatches = Math.ceil(totalRecipients / batchSize);
-  const totalFee = feeEstimate.feeWithBuffer * BigInt(numBatches);
+  const totalFee = perBatchFee * BigInt(numBatches);
 
   return {
     totalFee,
-    perBatchFee: feeEstimate.feeWithBuffer,
+    perBatchFee,
     numBatches,
   };
 }
