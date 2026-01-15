@@ -51,17 +51,51 @@ function isOnCurveAddress(address: string): boolean {
 }
 
 /**
- * Fetch miners from the API
+ * Fetch miners from the API with pagination
+ * Fetches in chunks of 1000 until no more records are returned
  */
 export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
-  logger.info('Fetching miner data from API...');
-  logger.debug({ apiEndpoint }, 'API endpoint');
-  const response = await fetch(apiEndpoint);
-  const data = (await response.json()) as { miners: Miner[] };
+  logger.info('Fetching miner data from API with pagination...');
+
+  const PAGE_SIZE = 1000;
+  const allMiners: Miner[] = [];
+  let offset = 0;
+
+  // Build base URL (strip any existing limit/offset params)
+  const url = new URL(apiEndpoint);
+  url.searchParams.delete('limit');
+  url.searchParams.delete('offset');
+  const baseUrl = url.toString();
+
+  // Fetch all pages
+  while (true) {
+    const pageUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}limit=${PAGE_SIZE}&offset=${offset}`;
+    logger.debug({ offset, pageUrl }, 'Fetching page');
+
+    const response = await fetch(pageUrl);
+    const data = (await response.json()) as { miners: Miner[] };
+
+    if (!data.miners || data.miners.length === 0) {
+      logger.debug({ offset }, 'No more records, pagination complete');
+      break;
+    }
+
+    allMiners.push(...data.miners);
+    logger.info({ fetched: data.miners.length, total: allMiners.length }, 'Fetched page');
+
+    if (data.miners.length < PAGE_SIZE) {
+      // Last page (partial)
+      break;
+    }
+
+    offset += PAGE_SIZE;
+  }
+
+  logger.info({ totalFetched: allMiners.length }, 'Finished fetching all miners');
 
   // First filter: valid address format and has required fields
   const validFormat: Miner[] = [];
-  for (const miner of data.miners) {
+  for (const miner of allMiners) {
     if (!miner.solAddress || !miner.xnm) {
       logger.warn({ ethAddress: miner.account }, 'Skipped miner with missing solAddress or xnm');
       continue;

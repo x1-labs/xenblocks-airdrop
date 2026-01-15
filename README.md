@@ -123,9 +123,9 @@ The `xnm-airdrop-tracker` program stores:
 
 ## API Endpoint
 
-Fetches miner data from:
+Fetches miner data from xenblocks.io with automatic pagination (1000 records per page):
 ```
-https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true
+https://xenblocks.io/v1/leaderboard?require_sol_address=true
 ```
 
 ## License
