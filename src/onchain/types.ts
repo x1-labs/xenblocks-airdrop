@@ -36,18 +36,6 @@ export interface AirdropRecord {
 }
 
 /**
- * Token type constants for on-chain instructions
- * XUNI is stored in reserved[0]
- */
-export const TOKEN_TYPE = {
-  XNM: 0,
-  XBLK: 1,
-  XUNI: 2,
-} as const;
-
-export type TokenTypeValue = (typeof TOKEN_TYPE)[keyof typeof TOKEN_TYPE];
-
-/**
  * Offset constants for GlobalState deserialization
  * Account layout:
  * - 8 bytes: Anchor discriminator

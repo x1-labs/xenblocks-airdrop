@@ -3,7 +3,6 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
-  TransactionInstruction,
 } from '@solana/web3.js';
 import { Config, TokenConfig } from '../config.js';
 import { Miner, MultiTokenDelta, MultiTokenAirdropResult, OnChainSnapshot } from './types.js';
@@ -24,7 +23,6 @@ import {
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
 } from '../onchain/client.js';
-import { TOKEN_TYPE } from '../onchain/types.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -92,13 +90,13 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
 /**
  * Get token config by type
  */
-function getTokenConfig(config: Config, tokenType: 'xnm' | 'xblk'): TokenConfig | undefined {
+function getTokenConfig(config: Config, tokenType: 'xnm' | 'xblk' | 'xuni'): TokenConfig | undefined {
   return config.tokens.find(t => t.type === tokenType);
 }
 
 /**
  * Execute combined multi-token airdrop
- * Processes both XNM and XBLK in a single pass with one transaction per recipient
+ * Processes XNM, XBLK, and XUNI in a single pass with one transaction per recipient
  */
 export async function executeAirdrop(
   connection: Connection,
@@ -124,9 +122,10 @@ export async function executeAirdrop(
   // Get token configs
   const xnmConfig = getTokenConfig(config, 'xnm');
   const xblkConfig = getTokenConfig(config, 'xblk');
+  const xuniConfig = getTokenConfig(config, 'xuni');
 
-  if (!xnmConfig || !xblkConfig) {
-    logger.error('Both XNM and XBLK token configs are required for combined airdrop');
+  if (!xnmConfig || !xblkConfig || !xuniConfig) {
+    logger.error('XNM, XBLK, and XUNI token configs are required for combined airdrop');
     throw new Error('Missing token configuration');
   }
 
@@ -155,11 +154,12 @@ export async function executeAirdrop(
     );
   }
 
-  // Check payer balances for both tokens
-  const xnmPayerInfo = await getPayerBalance(connection, payer, xnmConfig, config.tokenProgramId);
-  const xblkPayerInfo = await getPayerBalance(connection, payer, xblkConfig, config.tokenProgramId);
+  // Check payer balances for all tokens (each token may use different program)
+  const xnmPayerInfo = await getPayerBalance(connection, payer, xnmConfig, xnmConfig.programId);
+  const xblkPayerInfo = await getPayerBalance(connection, payer, xblkConfig, xblkConfig.programId);
+  const xuniPayerInfo = await getPayerBalance(connection, payer, xuniConfig, xuniConfig.programId);
 
-  logger.info({ xnm: xnmPayerInfo.formatted, xblk: xblkPayerInfo.formatted }, 'Payer token balances');
+  logger.info({ xnm: xnmPayerInfo.formatted, xblk: xblkPayerInfo.formatted, xuni: xuniPayerInfo.formatted }, 'Payer token balances');
 
   // Check if global state is initialized
   const globalState = await getGlobalState(
@@ -205,12 +205,13 @@ export async function executeAirdrop(
 
   // Calculate multi-token deltas
   const deltas = calculateMultiTokenDeltas(miners, snapshots);
-  const { totalXnm, totalXblk } = calculateMultiTokenTotals(deltas);
+  const { totalXnm, totalXblk, totalXuni } = calculateMultiTokenTotals(deltas);
 
   logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
   logger.info({
     xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
     xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
+    xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
   }, 'Total tokens needed');
 
   // Check balances
@@ -232,6 +233,15 @@ export async function executeAirdrop(
     }
   }
 
+  if (totalXuni > xuniPayerInfo.balance) {
+    const shortfall = formatTokenAmount(totalXuni - xuniPayerInfo.balance, xuniConfig.decimals);
+    logger.warn({ shortfall, token: 'XUNI' }, 'Insufficient XUNI balance');
+    if (!config.dryRun) {
+      logger.error('Cannot proceed with insufficient XUNI balance');
+      return;
+    }
+  }
+
   // Process airdrops
   logger.info({ recipients: deltas.length, concurrency: config.concurrency }, 'Starting combined airdrop...');
 
@@ -241,6 +251,7 @@ export async function executeAirdrop(
     config,
     xnmConfig,
     xblkConfig,
+    xuniConfig,
     deltas,
     snapshots
   );
@@ -253,6 +264,9 @@ export async function executeAirdrop(
   const totalXblkSent = results
     .filter((r) => r.status === 'success')
     .reduce((sum, r) => sum + r.xblkAmount, 0n);
+  const totalXuniSent = results
+    .filter((r) => r.status === 'success')
+    .reduce((sum, r) => sum + r.xuniAmount, 0n);
 
   // Update on-chain run totals
   if (!config.dryRun && successCount > 0) {
@@ -263,7 +277,7 @@ export async function executeAirdrop(
       payer,
       runId,
       successCount,
-      totalXnmSent + totalXblkSent
+      totalXnmSent + totalXblkSent + totalXuniSent
     );
     logger.debug({ signature: updateSig }, 'Run totals updated');
   }
@@ -274,6 +288,7 @@ export async function executeAirdrop(
     failed: results.length - successCount,
     xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
     xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
+    xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
   }, 'Airdrop complete');
 }
 
@@ -286,86 +301,39 @@ async function processSingleRecipient(
   config: Config,
   xnmConfig: TokenConfig,
   xblkConfig: TokenConfig,
+  xuniConfig: TokenConfig,
   delta: MultiTokenDelta,
   hasExistingRecord: boolean
 ): Promise<MultiTokenAirdropResult> {
   const solWallet = new PublicKey(delta.walletAddress);
 
-  // Build record update instructions
-  const recordInstructions: TransactionInstruction[] = [];
-
-  if (hasExistingRecord) {
-    // Update existing record for both tokens
-    if (delta.xnmDelta > 0n) {
-      recordInstructions.push(
-        createUpdateRecordInstruction(
-          config.airdropTrackerProgramId,
-          payer.publicKey,
-          solWallet,
-          delta.ethAddress,
-          TOKEN_TYPE.XNM,
-          delta.xnmDelta
-        )
+  // Build single record update instruction for all three tokens
+  const recordInstruction = hasExistingRecord
+    ? createUpdateRecordInstruction(
+        config.airdropTrackerProgramId,
+        payer.publicKey,
+        solWallet,
+        delta.ethAddress,
+        delta.xnmDelta,
+        delta.xblkDelta,
+        delta.xuniDelta
+      )
+    : createInitializeAndUpdateInstruction(
+        config.airdropTrackerProgramId,
+        payer.publicKey,
+        solWallet,
+        delta.ethAddress,
+        delta.xnmDelta,
+        delta.xblkDelta,
+        delta.xuniDelta
       );
-    }
-    if (delta.xblkDelta > 0n) {
-      recordInstructions.push(
-        createUpdateRecordInstruction(
-          config.airdropTrackerProgramId,
-          payer.publicKey,
-          solWallet,
-          delta.ethAddress,
-          TOKEN_TYPE.XBLK,
-          delta.xblkDelta
-        )
-      );
-    }
-  } else {
-    // Initialize and update for first token, then update for second
-    if (delta.xnmDelta > 0n) {
-      recordInstructions.push(
-        createInitializeAndUpdateInstruction(
-          config.airdropTrackerProgramId,
-          payer.publicKey,
-          solWallet,
-          delta.ethAddress,
-          TOKEN_TYPE.XNM,
-          delta.xnmDelta
-        )
-      );
-      // After initialize, use update for XBLK
-      if (delta.xblkDelta > 0n) {
-        recordInstructions.push(
-          createUpdateRecordInstruction(
-            config.airdropTrackerProgramId,
-            payer.publicKey,
-            solWallet,
-            delta.ethAddress,
-            TOKEN_TYPE.XBLK,
-            delta.xblkDelta
-          )
-        );
-      }
-    } else if (delta.xblkDelta > 0n) {
-      // Only XBLK delta, initialize with XBLK
-      recordInstructions.push(
-        createInitializeAndUpdateInstruction(
-          config.airdropTrackerProgramId,
-          payer.publicKey,
-          solWallet,
-          delta.ethAddress,
-          TOKEN_TYPE.XBLK,
-          delta.xblkDelta
-        )
-      );
-    }
-  }
 
   const transferItem: MultiTokenTransferItem = {
     recipientAddress: delta.walletAddress,
     ethAddress: delta.ethAddress,
     xnmAmount: delta.xnmDelta,
     xblkAmount: delta.xblkDelta,
+    xuniAmount: delta.xuniDelta,
   };
 
   // Execute multi-token transfer
@@ -374,14 +342,15 @@ async function processSingleRecipient(
     payer,
     xnmConfig,
     xblkConfig,
-    config.tokenProgramId,
+    xuniConfig,
     transferItem,
-    recordInstructions,
+    [recordInstruction],
     config.feeBufferMultiplier
   );
 
   const xnmFormatted = formatTokenAmount(delta.xnmDelta, xnmConfig.decimals);
   const xblkFormatted = formatTokenAmount(delta.xblkDelta, xblkConfig.decimals);
+  const xuniFormatted = formatTokenAmount(delta.xuniDelta, xuniConfig.decimals);
 
   if (result.success) {
     logger.trace(
@@ -396,6 +365,9 @@ async function processSingleRecipient(
       xblkApi: delta.xblkApiAmount,
       xblkPrev: formatTokenAmount(delta.xblkPrevious, xblkConfig.decimals),
       xblkDelta: xblkFormatted,
+      xuniApi: delta.xuniApiAmount,
+      xuniPrev: formatTokenAmount(delta.xuniPrevious, xuniConfig.decimals),
+      xuniDelta: xuniFormatted,
     }, 'Transfer successful');
 
     return {
@@ -413,6 +385,7 @@ async function processSingleRecipient(
       ethAddress: delta.ethAddress,
       xnmDelta: xnmFormatted,
       xblkDelta: xblkFormatted,
+      xuniDelta: xuniFormatted,
       error: result.errorMessage,
     }, 'Transfer failed');
 
@@ -438,6 +411,7 @@ async function processMultiTokenAirdrops(
   config: Config,
   xnmConfig: TokenConfig,
   xblkConfig: TokenConfig,
+  xuniConfig: TokenConfig,
   deltas: MultiTokenDelta[],
   snapshots: Map<string, OnChainSnapshot>
 ): Promise<MultiTokenAirdropResult[]> {
@@ -455,6 +429,7 @@ async function processMultiTokenAirdrops(
         wallet: delta.walletAddress,
         xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
         xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
+        xuniDelta: formatTokenAmount(delta.xuniDelta, xuniConfig.decimals),
       }, '[DRY RUN] Would send tokens');
 
       results.push({
@@ -500,6 +475,7 @@ async function processMultiTokenAirdrops(
         config,
         xnmConfig,
         xblkConfig,
+        xuniConfig,
         delta,
         hasExistingRecord
       );

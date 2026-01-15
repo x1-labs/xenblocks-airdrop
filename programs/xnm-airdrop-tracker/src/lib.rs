@@ -76,77 +76,65 @@ pub mod xnm_airdrop_tracker {
     }
 
     /// Update an existing airdrop record after a successful transfer
-    /// token_type: 0 = XNM, 1 = XBLK, 2 = XUNI
+    /// Updates all three token amounts at once
     pub fn update_record(
         ctx: Context<UpdateRecord>,
-        token_type: u8,
-        amount_to_add: u64,
+        xnm_amount: u64,
+        xblk_amount: u64,
+        xuni_amount: u64,
     ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
 
-        match token_type {
-            0 => {
-                record.xnm_airdropped = record
-                    .xnm_airdropped
-                    .checked_add(amount_to_add)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
-            1 => {
-                record.xblk_airdropped = record
-                    .xblk_airdropped
-                    .checked_add(amount_to_add)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
-            2 => {
-                record.xuni_airdropped = record
-                    .xuni_airdropped
-                    .checked_add(amount_to_add)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
-            _ => return Err(ErrorCode::InvalidTokenType.into()),
-        }
+        record.xnm_airdropped = record
+            .xnm_airdropped
+            .checked_add(xnm_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        record.xblk_airdropped = record
+            .xblk_airdropped
+            .checked_add(xblk_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        record.xuni_airdropped = record
+            .xuni_airdropped
+            .checked_add(xuni_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
         record.last_updated = Clock::get()?.unix_timestamp;
 
         msg!(
-            "Updated airdrop record: wallet={}, token_type={}, added={}",
+            "Updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}",
             record.sol_wallet,
-            token_type,
-            amount_to_add
+            xnm_amount,
+            xblk_amount,
+            xuni_amount
         );
         Ok(())
     }
 
     /// Initialize a record and immediately update it (for new wallets during airdrop)
-    /// token_type: 0 = XNM, 1 = XBLK, 2 = XUNI
+    /// Sets all three token amounts at once
     pub fn initialize_and_update(
         ctx: Context<InitializeRecord>,
         eth_address: [u8; 42],
-        token_type: u8,
-        initial_amount: u64,
+        xnm_amount: u64,
+        xblk_amount: u64,
+        xuni_amount: u64,
     ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
         record.sol_wallet = ctx.accounts.sol_wallet.key();
         record.eth_address = eth_address;
-        record.xnm_airdropped = 0;
-        record.xblk_airdropped = 0;
-        record.xuni_airdropped = 0;
+        record.xnm_airdropped = xnm_amount;
+        record.xblk_airdropped = xblk_amount;
+        record.xuni_airdropped = xuni_amount;
         record.reserved = [0u64; 5];
-
-        match token_type {
-            0 => record.xnm_airdropped = initial_amount,
-            1 => record.xblk_airdropped = initial_amount,
-            2 => record.xuni_airdropped = initial_amount,
-            _ => return Err(ErrorCode::InvalidTokenType.into()),
-        }
-
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
         msg!(
-            "Initialized and updated airdrop record: wallet={}, token_type={}, amount={}",
+            "Initialized and updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}",
             ctx.accounts.sol_wallet.key(),
-            token_type,
-            initial_amount
+            xnm_amount,
+            xblk_amount,
+            xuni_amount
         );
         Ok(())
     }
@@ -343,6 +331,4 @@ pub enum ErrorCode {
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
-    #[msg("Invalid token type: must be 0 (XNM), 1 (XBLK), or 2 (XUNI)")]
-    InvalidTokenType,
 }
