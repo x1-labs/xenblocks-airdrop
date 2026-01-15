@@ -1,4 +1,4 @@
-# XNM Airdrop
+# Xenblocks Airdrop
 
 A Solana-based multi-token airdrop system that distributes XNM, XBLK, and XUNI tokens to miners from the xenblocks.io platform based on their mining contributions.
 
