@@ -45,6 +45,16 @@ export function WalletDetails({ address, stats }: WalletDetailsProps) {
       className: 'text-right',
     },
     {
+      key: 'xuni',
+      header: 'XUNI Amount',
+      render: (r: AirdropRecord) => (
+        <span className="text-purple-400 font-mono">
+          {formatTokenAmount(r.xuniAirdropped)}
+        </span>
+      ),
+      className: 'text-right',
+    },
+    {
       key: 'updated',
       header: 'Last Updated',
       render: (r: AirdropRecord) => (
@@ -70,7 +80,7 @@ export function WalletDetails({ address, stats }: WalletDetailsProps) {
         </a>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total XNM Received"
           value={formatTokenAmount(stats.totalXnm)}
@@ -78,6 +88,10 @@ export function WalletDetails({ address, stats }: WalletDetailsProps) {
         <StatCard
           title="Total XBLK Received"
           value={formatTokenAmount(stats.totalXblk)}
+        />
+        <StatCard
+          title="Total XUNI Received"
+          value={formatTokenAmount(stats.totalXuni)}
         />
         <StatCard
           title="Last Updated"

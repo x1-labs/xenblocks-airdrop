@@ -7,7 +7,14 @@ import { makeSnapshotKey } from '../onchain/client.js';
  * Get the API amount for the specified token type from a miner
  */
 function getTokenAmount(miner: Miner, tokenType: TokenType): string {
-  return tokenType === 'xnm' ? miner.xnm : miner.xblk;
+  switch (tokenType) {
+    case 'xnm':
+      return miner.xnm;
+    case 'xblk':
+      return miner.xblk;
+    case 'xuni':
+      return miner.xuni;
+  }
 }
 
 /**
@@ -64,27 +71,34 @@ export function calculateMultiTokenDeltas(
 
     const xnmApiAmount = miner.xnm || '0';
     const xblkApiAmount = miner.xblk || '0';
+    const xuniApiAmount = miner.xuni || '0';
 
     const xnmCurrent = convertApiAmountToTokenAmount(xnmApiAmount);
     const xblkCurrent = convertApiAmountToTokenAmount(xblkApiAmount);
+    const xuniCurrent = convertApiAmountToTokenAmount(xuniApiAmount);
 
     const xnmPrevious = snapshot?.xnmAirdropped ?? 0n;
     const xblkPrevious = snapshot?.xblkAirdropped ?? 0n;
+    const xuniPrevious = snapshot?.xuniAirdropped ?? 0n;
 
     const xnmDelta = xnmCurrent - xnmPrevious;
     const xblkDelta = xblkCurrent - xblkPrevious;
+    const xuniDelta = xuniCurrent - xuniPrevious;
 
     // Only include if at least one token has positive delta
-    if (xnmDelta > 0n || xblkDelta > 0n) {
+    if (xnmDelta > 0n || xblkDelta > 0n || xuniDelta > 0n) {
       results.push({
         walletAddress: miner.solAddress,
         ethAddress: miner.account,
         xnmDelta: xnmDelta > 0n ? xnmDelta : 0n,
         xblkDelta: xblkDelta > 0n ? xblkDelta : 0n,
+        xuniDelta: xuniDelta > 0n ? xuniDelta : 0n,
         xnmApiAmount,
         xblkApiAmount,
+        xuniApiAmount,
         xnmPrevious,
         xblkPrevious,
+        xuniPrevious,
       });
     }
   }
@@ -105,14 +119,17 @@ export function calculateTotalAmount(deltas: DeltaResult[]): bigint {
 export function calculateMultiTokenTotals(deltas: MultiTokenDelta[]): {
   totalXnm: bigint;
   totalXblk: bigint;
+  totalXuni: bigint;
 } {
   let totalXnm = 0n;
   let totalXblk = 0n;
+  let totalXuni = 0n;
 
   for (const delta of deltas) {
     totalXnm += delta.xnmDelta;
     totalXblk += delta.xblkDelta;
+    totalXuni += delta.xuniDelta;
   }
 
-  return { totalXnm, totalXblk };
+  return { totalXnm, totalXblk, totalXuni };
 }

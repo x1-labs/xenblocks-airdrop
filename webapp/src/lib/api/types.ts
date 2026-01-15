@@ -6,6 +6,7 @@ export interface LeaderboardMiner {
   solAddress: string; // Solana wallet address
   xnm: number | string; // XNM amount from API (18 decimals, may be scientific notation)
   xblk: number | string; // XBLK amount from API (18 decimals, may be scientific notation)
+  xuni: number | string; // XUNI amount from API (18 decimals, may be scientific notation)
 }
 
 /**
@@ -23,10 +24,13 @@ export interface MinerDelta {
   ethAddress: string;
   apiXnm: bigint;
   apiXblk: bigint;
+  apiXuni: bigint;
   onChainXnm: bigint;
   onChainXblk: bigint;
+  onChainXuni: bigint;
   pendingXnm: bigint;
   pendingXblk: bigint;
+  pendingXuni: bigint;
   hasOnChainRecord: boolean;
 }
 
@@ -37,8 +41,10 @@ export interface DeltaSummary {
   totalMiners: number;
   minersWithPendingXnm: number;
   minersWithPendingXblk: number;
+  minersWithPendingXuni: number;
   totalPendingXnm: bigint;
   totalPendingXblk: bigint;
+  totalPendingXuni: bigint;
   minersWithOnChainRecords: number;
   newMiners: number;
 }

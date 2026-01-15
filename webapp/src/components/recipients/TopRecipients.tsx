@@ -13,12 +13,14 @@ interface TopRecipientsProps {
   records: AirdropRecord[];
   title?: string;
   showXblk?: boolean;
+  showXuni?: boolean;
 }
 
 export function TopRecipients({
   records,
   title = 'Top Recipients by XNM',
   showXblk = true,
+  showXuni = true,
 }: TopRecipientsProps) {
   const columns = [
     {
@@ -68,6 +70,20 @@ export function TopRecipients({
             render: (r: AirdropRecord) => (
               <span className="text-green-400 font-mono">
                 {formatTokenAmount(r.xblkAirdropped)}
+              </span>
+            ),
+            className: 'text-right',
+          },
+        ]
+      : []),
+    ...(showXuni
+      ? [
+          {
+            key: 'xuni',
+            header: 'XUNI Amount',
+            render: (r: AirdropRecord) => (
+              <span className="text-purple-400 font-mono">
+                {formatTokenAmount(r.xuniAirdropped)}
               </span>
             ),
             className: 'text-right',

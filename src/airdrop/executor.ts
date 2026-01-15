@@ -403,6 +403,7 @@ async function processSingleRecipient(
       ethAddress: delta.ethAddress,
       xnmAmount: delta.xnmDelta,
       xblkAmount: delta.xblkDelta,
+      xuniAmount: delta.xuniDelta,
       txSignature: result.txSignature!,
       status: 'success',
     };
@@ -420,6 +421,7 @@ async function processSingleRecipient(
       ethAddress: delta.ethAddress,
       xnmAmount: delta.xnmDelta,
       xblkAmount: delta.xblkDelta,
+      xuniAmount: delta.xuniDelta,
       txSignature: null,
       status: 'failed',
       errorMessage: result.errorMessage,
@@ -460,6 +462,7 @@ async function processMultiTokenAirdrops(
         ethAddress: delta.ethAddress,
         xnmAmount: delta.xnmDelta,
         xblkAmount: delta.xblkDelta,
+        xuniAmount: delta.xuniDelta,
         txSignature: null,
         status: 'success',
       });

@@ -98,6 +98,7 @@ export function Dashboard() {
         <DistributionChart
           totalXnm={stats.totalXnm}
           totalXblk={stats.totalXblk}
+          totalXuni={stats.totalXuni}
         />
         <TopRecipientsChart
           records={stats.topByXnm}
@@ -110,6 +111,7 @@ export function Dashboard() {
         records={stats.topByXnm}
         title="Top 20 Recipients by XNM"
         showXblk={stats.totalXblk > 0n}
+        showXuni={stats.totalXuni > 0n}
       />
 
       {stats.runs.length > 0 && (

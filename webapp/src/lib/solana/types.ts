@@ -29,7 +29,8 @@ export interface AirdropRecord {
   ethAddress: number[]; // [u8; 42]
   xnmAirdropped: bigint;
   xblkAirdropped: bigint;
-  reserved: bigint[]; // [u64; 6] - reserved for future tokens
+  xuniAirdropped: bigint;
+  reserved: bigint[]; // [u64; 5] - reserved for future tokens
   lastUpdated: bigint;
   bump: number;
 }
@@ -70,12 +71,13 @@ export const AIRDROP_RECORD_OFFSETS = {
   ETH_ADDRESS: 8 + 32,
   XNM_AIRDROPPED: 8 + 32 + 42,
   XBLK_AIRDROPPED: 8 + 32 + 42 + 8,
-  RESERVED: 8 + 32 + 42 + 8 + 8,
-  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 48,
-  BUMP: 8 + 32 + 42 + 8 + 8 + 48 + 8,
+  XUNI_AIRDROPPED: 8 + 32 + 42 + 8 + 8,
+  RESERVED: 8 + 32 + 42 + 8 + 8 + 8,
+  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 8 + 40,
+  BUMP: 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8,
 } as const;
 
-export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 48 + 8 + 1; // 155 bytes
+export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8 + 1; // 155 bytes
 
 /**
  * Offset constants for AirdropRecord deserialization (OLD/legacy schema)

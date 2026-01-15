@@ -76,22 +76,26 @@ export function deserializeAirdropRecord(data: Uint8Array): AirdropRecord {
       ethAddress,
       xnmAirdropped: totalAirdropped,
       xblkAirdropped: 0n,
-      reserved: [0n, 0n, 0n, 0n, 0n, 0n],
+      xuniAirdropped: 0n,
+      reserved: [0n, 0n, 0n, 0n, 0n],
       lastUpdated,
       bump,
     };
   }
 
-  // New schema with separate XNM/XBLK fields
+  // New schema with separate XNM/XBLK/XUNI fields
   const xnmAirdropped = buffer.readBigUInt64LE(
     AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
   );
   const xblkAirdropped = buffer.readBigUInt64LE(
     AIRDROP_RECORD_OFFSETS.XBLK_AIRDROPPED
   );
+  const xuniAirdropped = buffer.readBigUInt64LE(
+    AIRDROP_RECORD_OFFSETS.XUNI_AIRDROPPED
+  );
 
   const reserved: bigint[] = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     reserved.push(
       buffer.readBigUInt64LE(AIRDROP_RECORD_OFFSETS.RESERVED + i * 8)
     );
@@ -105,6 +109,7 @@ export function deserializeAirdropRecord(data: Uint8Array): AirdropRecord {
     ethAddress,
     xnmAirdropped,
     xblkAirdropped,
+    xuniAirdropped,
     reserved,
     lastUpdated,
     bump,

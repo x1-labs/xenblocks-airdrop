@@ -29,17 +29,20 @@ export interface AirdropRecord {
   ethAddress: number[]; // [u8; 42]
   xnmAirdropped: bigint;
   xblkAirdropped: bigint;
-  reserved: bigint[]; // [u64; 6] - reserved for future tokens
+  xuniAirdropped: bigint;
+  reserved: bigint[]; // [u64; 5] - reserved for future tokens
   lastUpdated: bigint;
   bump: number;
 }
 
 /**
  * Token type constants for on-chain instructions
+ * XUNI is stored in reserved[0]
  */
 export const TOKEN_TYPE = {
   XNM: 0,
   XBLK: 1,
+  XUNI: 2,
 } as const;
 
 export type TokenTypeValue = (typeof TOKEN_TYPE)[keyof typeof TOKEN_TYPE];
@@ -92,7 +95,8 @@ export const AIRDROP_RUN_SIZE = 8 + 8 + 8 + 4 + 8 + 1 + 1; // 38 bytes
  * - 42 bytes: eth_address ([u8; 42])
  * - 8 bytes: xnm_airdropped (u64)
  * - 8 bytes: xblk_airdropped (u64)
- * - 48 bytes: reserved ([u64; 6])
+ * - 8 bytes: xuni_airdropped (u64)
+ * - 40 bytes: reserved ([u64; 5])
  * - 8 bytes: last_updated (i64)
  * - 1 byte: bump (u8)
  */
@@ -102,12 +106,13 @@ export const AIRDROP_RECORD_OFFSETS = {
   ETH_ADDRESS: 8 + 32,
   XNM_AIRDROPPED: 8 + 32 + 42,
   XBLK_AIRDROPPED: 8 + 32 + 42 + 8,
-  RESERVED: 8 + 32 + 42 + 8 + 8,
-  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 48,
-  BUMP: 8 + 32 + 42 + 8 + 8 + 48 + 8,
+  XUNI_AIRDROPPED: 8 + 32 + 42 + 8 + 8,
+  RESERVED: 8 + 32 + 42 + 8 + 8 + 8,
+  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 8 + 40,
+  BUMP: 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8,
 } as const;
 
-export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 48 + 8 + 1; // 155 bytes
+export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8 + 1; // 155 bytes
 
 /**
  * Offset constants for AirdropRecord deserialization (OLD/legacy schema)

@@ -63,7 +63,8 @@ pub mod xnm_airdrop_tracker {
         record.eth_address = eth_address;
         record.xnm_airdropped = 0;
         record.xblk_airdropped = 0;
-        record.reserved = [0u64; 6];
+        record.xuni_airdropped = 0;
+        record.reserved = [0u64; 5];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
@@ -75,7 +76,7 @@ pub mod xnm_airdrop_tracker {
     }
 
     /// Update an existing airdrop record after a successful transfer
-    /// token_type: 0 = XNM, 1 = XBLK
+    /// token_type: 0 = XNM, 1 = XBLK, 2 = XUNI
     pub fn update_record(
         ctx: Context<UpdateRecord>,
         token_type: u8,
@@ -96,6 +97,12 @@ pub mod xnm_airdrop_tracker {
                     .checked_add(amount_to_add)
                     .ok_or(ErrorCode::Overflow)?;
             }
+            2 => {
+                record.xuni_airdropped = record
+                    .xuni_airdropped
+                    .checked_add(amount_to_add)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
             _ => return Err(ErrorCode::InvalidTokenType.into()),
         }
         record.last_updated = Clock::get()?.unix_timestamp;
@@ -110,7 +117,7 @@ pub mod xnm_airdrop_tracker {
     }
 
     /// Initialize a record and immediately update it (for new wallets during airdrop)
-    /// token_type: 0 = XNM, 1 = XBLK
+    /// token_type: 0 = XNM, 1 = XBLK, 2 = XUNI
     pub fn initialize_and_update(
         ctx: Context<InitializeRecord>,
         eth_address: [u8; 42],
@@ -122,11 +129,13 @@ pub mod xnm_airdrop_tracker {
         record.eth_address = eth_address;
         record.xnm_airdropped = 0;
         record.xblk_airdropped = 0;
-        record.reserved = [0u64; 6];
+        record.xuni_airdropped = 0;
+        record.reserved = [0u64; 5];
 
         match token_type {
             0 => record.xnm_airdropped = initial_amount,
             1 => record.xblk_airdropped = initial_amount,
+            2 => record.xuni_airdropped = initial_amount,
             _ => return Err(ErrorCode::InvalidTokenType.into()),
         }
 
@@ -318,8 +327,10 @@ pub struct AirdropRecord {
     pub xnm_airdropped: u64, // 8 bytes
     /// Cumulative XBLK amount airdropped (in token base units, 9 decimals)
     pub xblk_airdropped: u64, // 8 bytes
-    /// Reserved space for future tokens (8 bytes each * 6 = 48 bytes)
-    pub reserved: [u64; 6], // 48 bytes
+    /// Cumulative XUNI amount airdropped (in token base units, 9 decimals)
+    pub xuni_airdropped: u64, // 8 bytes
+    /// Reserved space for future tokens (8 bytes each * 5 = 40 bytes)
+    pub reserved: [u64; 5], // 40 bytes
     /// Unix timestamp of last update
     pub last_updated: i64, // 8 bytes
     /// PDA bump seed for derivation
@@ -332,6 +343,6 @@ pub enum ErrorCode {
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
-    #[msg("Invalid token type: must be 0 (XNM) or 1 (XBLK)")]
+    #[msg("Invalid token type: must be 0 (XNM), 1 (XBLK), or 2 (XUNI)")]
     InvalidTokenType,
 }

@@ -38,7 +38,7 @@ export function PendingDeltasPage() {
 
   if (showOnlyPending) {
     filteredDeltas = filteredDeltas.filter(
-      (d) => d.pendingXnm > 0n || d.pendingXblk > 0n
+      (d) => d.pendingXnm > 0n || d.pendingXblk > 0n || d.pendingXuni > 0n
     );
   }
 
@@ -61,7 +61,7 @@ export function PendingDeltasPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard
             title="Total Miners"
             value={summary.totalMiners.toLocaleString()}
@@ -79,6 +79,11 @@ export function PendingDeltasPage() {
             title="Pending XBLK"
             value={formatTokenAmount(summary.totalPendingXblk)}
             subtitle={`${summary.minersWithPendingXblk} miners`}
+          />
+          <StatCard
+            title="Pending XUNI"
+            value={formatTokenAmount(summary.totalPendingXuni)}
+            subtitle={`${summary.minersWithPendingXuni} miners`}
           />
         </div>
       )}
@@ -121,7 +126,10 @@ export function PendingDeltasPage() {
                 <th className="pb-3 pr-4 text-right">Pending XNM</th>
                 <th className="pb-3 pr-4 text-right">API XBLK</th>
                 <th className="pb-3 pr-4 text-right">On-Chain XBLK</th>
-                <th className="pb-3 text-right">Pending XBLK</th>
+                <th className="pb-3 pr-4 text-right">Pending XBLK</th>
+                <th className="pb-3 pr-4 text-right">API XUNI</th>
+                <th className="pb-3 pr-4 text-right">On-Chain XUNI</th>
+                <th className="pb-3 text-right">Pending XUNI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
@@ -143,7 +151,7 @@ export function PendingDeltasPage() {
 }
 
 function DeltaRow({ delta }: { delta: MinerDelta }) {
-  const hasPending = delta.pendingXnm > 0n || delta.pendingXblk > 0n;
+  const hasPending = delta.pendingXnm > 0n || delta.pendingXblk > 0n || delta.pendingXuni > 0n;
 
   return (
     <tr className={hasPending ? 'bg-yellow-500/5' : ''}>
@@ -182,9 +190,20 @@ function DeltaRow({ delta }: { delta: MinerDelta }) {
       <td className="py-3 pr-4 text-right font-mono text-gray-300">
         {formatTokenAmount(delta.onChainXblk)}
       </td>
-      <td className="py-3 text-right font-mono">
+      <td className="py-3 pr-4 text-right font-mono">
         <span className={delta.pendingXblk > 0n ? 'text-yellow-400' : 'text-gray-500'}>
           {delta.pendingXblk > 0n ? `+${formatTokenAmount(delta.pendingXblk)}` : '0'}
+        </span>
+      </td>
+      <td className="py-3 pr-4 text-right font-mono text-gray-300">
+        {formatTokenAmount(delta.apiXuni)}
+      </td>
+      <td className="py-3 pr-4 text-right font-mono text-gray-300">
+        {formatTokenAmount(delta.onChainXuni)}
+      </td>
+      <td className="py-3 text-right font-mono">
+        <span className={delta.pendingXuni > 0n ? 'text-yellow-400' : 'text-gray-500'}>
+          {delta.pendingXuni > 0n ? `+${formatTokenAmount(delta.pendingXuni)}` : '0'}
         </span>
       </td>
     </tr>

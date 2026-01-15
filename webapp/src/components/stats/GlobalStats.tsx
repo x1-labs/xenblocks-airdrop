@@ -8,7 +8,7 @@ interface GlobalStatsProps {
 
 export function GlobalStats({ stats }: GlobalStatsProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
       <StatCard
         title="Total XNM Distributed"
         value={formatTokenAmount(stats.totalXnm)}
@@ -17,6 +17,11 @@ export function GlobalStats({ stats }: GlobalStatsProps) {
       <StatCard
         title="Total XBLK Distributed"
         value={formatTokenAmount(stats.totalXblk)}
+        subtitle="9 decimals"
+      />
+      <StatCard
+        title="Total XUNI Distributed"
+        value={formatTokenAmount(stats.totalXuni)}
         subtitle="9 decimals"
       />
       <StatCard

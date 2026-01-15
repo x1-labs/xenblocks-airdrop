@@ -73,7 +73,7 @@ export function usePendingDeltas(): UsePendingDeltasResult {
     // Build a map of on-chain records by solAddress:ethAddress (lowercase for comparison)
     const recordMap = new Map<
       string,
-      { xnmAirdropped: bigint; xblkAirdropped: bigint }
+      { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint }
     >();
     for (const record of records) {
       const solAddress = record.solWallet.toBase58();
@@ -82,6 +82,7 @@ export function usePendingDeltas(): UsePendingDeltasResult {
       recordMap.set(key, {
         xnmAirdropped: record.xnmAirdropped,
         xblkAirdropped: record.xblkAirdropped,
+        xuniAirdropped: record.xuniAirdropped,
       });
     }
 
@@ -89,8 +90,10 @@ export function usePendingDeltas(): UsePendingDeltasResult {
     const deltas: MinerDelta[] = [];
     let totalPendingXnm = 0n;
     let totalPendingXblk = 0n;
+    let totalPendingXuni = 0n;
     let minersWithPendingXnm = 0;
     let minersWithPendingXblk = 0;
+    let minersWithPendingXuni = 0;
     let minersWithOnChainRecords = 0;
     let newMiners = 0;
 
@@ -100,11 +103,14 @@ export function usePendingDeltas(): UsePendingDeltasResult {
 
       const apiXnm = toTokenAmount(miner.xnm || 0);
       const apiXblk = toTokenAmount(miner.xblk || 0);
+      const apiXuni = toTokenAmount(miner.xuni || 0);
       const onChainXnm = onChain?.xnmAirdropped ?? 0n;
       const onChainXblk = onChain?.xblkAirdropped ?? 0n;
+      const onChainXuni = onChain?.xuniAirdropped ?? 0n;
 
       const pendingXnm = apiXnm > onChainXnm ? apiXnm - onChainXnm : 0n;
       const pendingXblk = apiXblk > onChainXblk ? apiXblk - onChainXblk : 0n;
+      const pendingXuni = apiXuni > onChainXuni ? apiXuni - onChainXuni : 0n;
 
       const hasOnChainRecord = !!onChain;
 
@@ -123,16 +129,23 @@ export function usePendingDeltas(): UsePendingDeltasResult {
         minersWithPendingXblk++;
         totalPendingXblk += pendingXblk;
       }
+      if (pendingXuni > 0n) {
+        minersWithPendingXuni++;
+        totalPendingXuni += pendingXuni;
+      }
 
       deltas.push({
         solAddress: miner.solAddress,
         ethAddress: miner.account,
         apiXnm,
         apiXblk,
+        apiXuni,
         onChainXnm,
         onChainXblk,
+        onChainXuni,
         pendingXnm,
         pendingXblk,
+        pendingXuni,
         hasOnChainRecord,
       });
     }
@@ -149,8 +162,10 @@ export function usePendingDeltas(): UsePendingDeltasResult {
       totalMiners: miners.length,
       minersWithPendingXnm,
       minersWithPendingXblk,
+      minersWithPendingXuni,
       totalPendingXnm,
       totalPendingXblk,
+      totalPendingXuni,
       minersWithOnChainRecords,
       newMiners,
     };

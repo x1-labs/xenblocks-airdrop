@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export type TokenType = 'xnm' | 'xblk';
+export type TokenType = 'xnm' | 'xblk' | 'xuni';
 
 export interface TokenConfig {
   type: TokenType;
@@ -26,7 +26,7 @@ export interface Config {
   feeBufferMultiplier: number;
 }
 
-const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk'];
+const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
 
 /**
  * Parse comma-separated token types from environment variable

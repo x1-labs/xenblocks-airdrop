@@ -5,18 +5,21 @@ import { formatTokenAmount } from '@/lib/utils/format';
 interface DistributionChartProps {
   totalXnm: bigint;
   totalXblk: bigint;
+  totalXuni: bigint;
 }
 
-const COLORS = ['#3b82f6', '#10b981'];
+const COLORS = ['#3b82f6', '#10b981', '#a855f7'];
 
-export function DistributionChart({ totalXnm, totalXblk }: DistributionChartProps) {
+export function DistributionChart({ totalXnm, totalXblk, totalXuni }: DistributionChartProps) {
   // Convert to numbers for the chart (lose precision for display only)
   const xnmValue = Number(totalXnm / BigInt(10 ** 9));
   const xblkValue = Number(totalXblk / BigInt(10 ** 9));
+  const xuniValue = Number(totalXuni / BigInt(10 ** 9));
 
   const data = [
     { name: 'XNM', value: xnmValue, raw: totalXnm },
     { name: 'XBLK', value: xblkValue, raw: totalXblk },
+    { name: 'XUNI', value: xuniValue, raw: totalXuni },
   ].filter((d) => d.value > 0);
 
   if (data.length === 0) {

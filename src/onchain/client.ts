@@ -94,13 +94,14 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
       ethAddress,
       xnmAirdropped: totalAirdropped, // Legacy uses single field, treat as XNM
       xblkAirdropped: 0n,
-      reserved: [0n, 0n, 0n, 0n, 0n, 0n],
+      xuniAirdropped: 0n,
+      reserved: [0n, 0n, 0n, 0n, 0n],
       lastUpdated,
       bump,
     };
   }
 
-  // New schema with separate XNM/XBLK fields and reserved array
+  // New schema with separate XNM/XBLK/XUNI fields and reserved array
   const xnmAirdropped = data.readBigUInt64LE(
     AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
   );
@@ -109,9 +110,13 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
     AIRDROP_RECORD_OFFSETS.XBLK_AIRDROPPED
   );
 
-  // Read reserved array (6 u64 values)
+  const xuniAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_OFFSETS.XUNI_AIRDROPPED
+  );
+
+  // Read reserved array (5 u64 values)
   const reserved: bigint[] = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     reserved.push(
       data.readBigUInt64LE(AIRDROP_RECORD_OFFSETS.RESERVED + i * 8)
     );
@@ -126,6 +131,7 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
     ethAddress,
     xnmAirdropped,
     xblkAirdropped,
+    xuniAirdropped,
     reserved,
     lastUpdated,
     bump,
@@ -189,9 +195,16 @@ export async function getOnChainAmount(
   }
 
   const record = deserializeAirdropRecord(accountInfo.data);
-  return tokenType === TOKEN_TYPE.XNM
-    ? record.xnmAirdropped
-    : record.xblkAirdropped;
+  switch (tokenType) {
+    case TOKEN_TYPE.XNM:
+      return record.xnmAirdropped;
+    case TOKEN_TYPE.XBLK:
+      return record.xblkAirdropped;
+    case TOKEN_TYPE.XUNI:
+      return record.xuniAirdropped;
+    default:
+      return record.xnmAirdropped;
+  }
 }
 
 /**
@@ -239,10 +252,20 @@ export async function fetchAllOnChainSnapshots(
       const account = accounts[j];
       if (account) {
         const record = deserializeAirdropRecord(account.data);
-        const amount =
-          tokenType === TOKEN_TYPE.XNM
-            ? record.xnmAirdropped
-            : record.xblkAirdropped;
+        let amount: bigint;
+        switch (tokenType) {
+          case TOKEN_TYPE.XNM:
+            amount = record.xnmAirdropped;
+            break;
+          case TOKEN_TYPE.XBLK:
+            amount = record.xblkAirdropped;
+            break;
+          case TOKEN_TYPE.XUNI:
+            amount = record.xuniAirdropped;
+            break;
+          default:
+            amount = record.xnmAirdropped;
+        }
         const key = makeSnapshotKey(batch[j].miner.solAddress, batch[j].miner.ethAddress);
         snapshots.set(key, amount);
       }
@@ -254,16 +277,16 @@ export async function fetchAllOnChainSnapshots(
 }
 
 /**
- * Fetch on-chain snapshots for all miners in batch (both tokens)
+ * Fetch on-chain snapshots for all miners in batch (all tokens)
  * Uses getProgramAccounts for efficiency - single RPC call instead of batched fetches
- * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped }
+ * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped, xuniAirdropped }
  */
 export async function fetchAllMultiTokenSnapshots(
   connection: Connection,
   programId: PublicKey,
   _miners: { solAddress: string; ethAddress: string }[]
-): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint }>> {
-  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint }>();
+): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint }>> {
+  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint }>();
 
   // Fetch all airdrop record accounts in one call
   const accounts = await connection.getProgramAccounts(programId, {
@@ -292,6 +315,7 @@ export async function fetchAllMultiTokenSnapshots(
       snapshots.set(key, {
         xnmAirdropped: record.xnmAirdropped,
         xblkAirdropped: record.xblkAirdropped,
+        xuniAirdropped: record.xuniAirdropped,
       });
     } catch {
       // Skip malformed accounts
