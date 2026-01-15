@@ -6,13 +6,13 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-delegation_program = "X1dpTaMXkdEHQwhUk5oidxK9RXer8WoUCinWTyRmVjQ"
+delegation_program = "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6"
 
 [programs.testnet]
-delegation_program = "X1DPvnLXekvd6EtDsPVqahzhziKx3Zj1z8WkD93xebg"
+delegation_program = "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6"
 
 [programs.mainnet]
-xnm_airdrop_tracker = "Bsh6Bua2msqhcwB5E2ZmASmpXuEB2ZxEZE18VRwH8YTw"
+xenblocks_airdrop_tracker = "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6"
 
 [registry]
 url = "https://api.apr.dev"

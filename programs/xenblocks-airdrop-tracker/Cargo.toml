@@ -1,12 +1,12 @@
 [package]
-name = "xnm-airdrop-tracker"
+name = "xenblocks-airdrop-tracker"
 version = "0.1.0"
-description = "On-chain airdrop tracking program for XNM token"
+description = "On-chain airdrop tracking program for Xenblocks tokens"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "xnm_airdrop_tracker"
+name = "xenblocks_airdrop_tracker"
 
 [features]
 no-entrypoint = []

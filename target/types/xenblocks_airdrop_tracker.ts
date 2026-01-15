@@ -2,15 +2,15 @@
  * Program IDL in camelCase format in order to be used in JS/TS.
  *
  * Note that this is only a type helper and is not the actual IDL. The original
- * IDL can be found at `target/idl/xnm_airdrop_tracker.json`.
+ * IDL can be found at `target/idl/xenblocks_airdrop_tracker.json`.
  */
-export type XnmAirdropTracker = {
+export type XenblocksAirdropTracker = {
   "address": "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6",
   "metadata": {
-    "name": "xnmAirdropTracker",
+    "name": "xenblocksAirdropTracker",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "On-chain airdrop tracking program for XNM token"
+    "description": "On-chain airdrop tracking program for Xenblocks tokens"
   },
   "instructions": [
     {

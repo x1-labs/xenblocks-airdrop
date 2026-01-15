@@ -1533,7 +1533,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xnm-airdrop-tracker"
+name = "xenblocks-airdrop-tracker"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",

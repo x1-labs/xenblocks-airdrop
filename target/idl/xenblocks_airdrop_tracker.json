@@ -1,10 +1,10 @@
 {
   "address": "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6",
   "metadata": {
-    "name": "xnm_airdrop_tracker",
+    "name": "xenblocks_airdrop_tracker",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "On-chain airdrop tracking program for XNM token"
+    "description": "On-chain airdrop tracking program for Xenblocks tokens"
   },
   "instructions": [
     {

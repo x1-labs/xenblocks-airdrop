@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 declare_id!("JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6");
 
 #[program]
-pub mod xnm_airdrop_tracker {
+pub mod xenblocks_airdrop_tracker {
     use super::*;
 
     /// Initialize the global state (one-time setup)
