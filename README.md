@@ -54,24 +54,24 @@ cp .env.example .env
 
 ### Required Variables
 
-| Variable | Description |
-|----------|-------------|
-| `RPC_ENDPOINT` | Solana RPC URL |
-| `KEYPAIR_PATH` | Path to payer wallet keypair |
-| `AIRDROP_TRACKER_PROGRAM_ID` | Deployed program ID |
-| `XNM_TOKEN_MINT` | XNM token mint address |
-| `XBLK_TOKEN_MINT` | XBLK token mint address |
-| `XUNI_TOKEN_MINT` | XUNI token mint address |
+| Variable                     | Description                  |
+|------------------------------|------------------------------|
+| `RPC_ENDPOINT`               | Solana RPC URL               |
+| `KEYPAIR_PATH`               | Path to payer wallet keypair |
+| `AIRDROP_TRACKER_PROGRAM_ID` | Deployed program ID          |
+| `XNM_TOKEN_MINT`             | XNM token mint address       |
+| `XBLK_TOKEN_MINT`            | XBLK token mint address      |
+| `XUNI_TOKEN_MINT`            | XUNI token mint address      |
 
 ### Optional Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TOKEN_TYPES` | `xnm` | Comma-separated tokens to airdrop |
-| `TOKEN_PROGRAM` | `token` | Default: `token` or `token-2022` |
-| `DRY_RUN` | `false` | Test mode (no actual transfers) |
-| `CONCURRENCY` | `4` | Concurrent transactions |
-| `BATCH_SIZE` | `3` | Recipients per batch |
+| Variable        | Default | Description                       |
+|-----------------|---------|-----------------------------------|
+| `TOKEN_TYPES`   | `xnm`   | Comma-separated tokens to airdrop |
+| `TOKEN_PROGRAM` | `token` | Default: `token` or `token-2022`  |
+| `DRY_RUN`       | `false` | Test mode (no actual transfers)   |
+| `CONCURRENCY`   | `4`     | Concurrent transactions           |
+| `BATCH_SIZE`    | `3`     | Recipients per batch              |
 
 See `.env.example` for all options.
 
