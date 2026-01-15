@@ -10,12 +10,12 @@ export interface TokenConfig {
   type: TokenType;
   mint: PublicKey;
   decimals: number;
+  programId: PublicKey;
 }
 
 export interface Config {
   tokens: TokenConfig[];
   airdropTrackerProgramId: PublicKey;
-  tokenProgramId: PublicKey;
   rpcEndpoint: string;
   dryRun: boolean;
   keypairPath: string;
@@ -55,20 +55,31 @@ function parseTokenTypes(tokenTypesEnv: string): TokenType[] {
 /**
  * Get token configuration for a specific token type
  */
-function getTokenConfig(tokenType: TokenType): TokenConfig {
+function getTokenConfig(tokenType: TokenType, defaultProgramId: PublicKey): TokenConfig {
   const envPrefix = tokenType.toUpperCase();
   const mintEnvVar = `${envPrefix}_TOKEN_MINT`;
   const decimalsEnvVar = `${envPrefix}_DECIMALS`;
+  const programEnvVar = `${envPrefix}_TOKEN_PROGRAM`;
 
   const mint = process.env[mintEnvVar];
   if (!mint) {
     throw new Error(`Missing required environment variable: ${mintEnvVar}`);
   }
 
+  // Per-token program override (e.g., XUNI_TOKEN_PROGRAM=token-2022)
+  const tokenProgram = process.env[programEnvVar];
+  let programId = defaultProgramId;
+  if (tokenProgram === 'token-2022') {
+    programId = TOKEN_2022_PROGRAM_ID;
+  } else if (tokenProgram === 'token') {
+    programId = TOKEN_PROGRAM_ID;
+  }
+
   return {
     type: tokenType,
     mint: new PublicKey(mint),
     decimals: parseInt(process.env[decimalsEnvVar] || '9'),
+    programId,
   };
 }
 
@@ -85,12 +96,17 @@ export function loadConfig(): Config {
     }
   }
 
+  // Token program: 'token' (default) or 'token-2022'
+  const defaultTokenProgram = process.env.TOKEN_PROGRAM || 'token';
+  const defaultProgramId =
+    defaultTokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+
   // Parse token types from env (defaults to 'xnm')
   const tokenTypesEnv = process.env.TOKEN_TYPES || 'xnm';
   const tokenTypes = parseTokenTypes(tokenTypesEnv);
 
   // Build token configs for each requested token type
-  const tokens = tokenTypes.map((type) => getTokenConfig(type));
+  const tokens = tokenTypes.map((type) => getTokenConfig(type, defaultProgramId));
 
   // Parse minimum fee balance (default 10 native tokens)
   const minFeeBalanceInput = parseFloat(process.env.MIN_FEE_BALANCE || '10');
@@ -108,17 +124,11 @@ export function loadConfig(): Config {
     parseFloat(process.env.FEE_BUFFER_MULTIPLIER || '1.2')
   );
 
-  // Token program: 'token' (default) or 'token-2022'
-  const tokenProgram = process.env.TOKEN_PROGRAM || 'token';
-  const tokenProgramId =
-    tokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
-
   return {
     tokens,
     airdropTrackerProgramId: new PublicKey(
       process.env.AIRDROP_TRACKER_PROGRAM_ID!
     ),
-    tokenProgramId,
     rpcEndpoint: process.env.RPC_ENDPOINT!,
     dryRun: process.env.DRY_RUN === 'true',
     keypairPath: process.env.KEYPAIR_PATH!,

@@ -37,15 +37,6 @@ export interface OnChainSnapshot {
   xuniAirdropped: bigint;
 }
 
-export interface AirdropResult {
-  walletAddress: string;
-  ethAddress: string;
-  amount: bigint;
-  txSignature: string | null;
-  status: 'success' | 'failed';
-  errorMessage?: string;
-}
-
 /** Multi-token airdrop result for a single recipient */
 export interface MultiTokenAirdropResult {
   walletAddress: string;

@@ -138,6 +138,7 @@ export interface MultiTokenTransferItem {
   ethAddress: string;
   xnmAmount: bigint;
   xblkAmount: bigint;
+  xuniAmount: bigint;
 }
 
 export interface MultiTokenBatchResult {
@@ -620,13 +621,14 @@ export async function estimateTotalFees(
 /**
  * Transfer multiple tokens to a single recipient in one transaction
  * Includes both token transfers and record update instructions
+ * Each token config includes its own programId for Token vs Token-2022 support
  */
 export async function multiTokenTransfer(
   connection: Connection,
   payer: Keypair,
   xnmConfig: TokenConfig,
   xblkConfig: TokenConfig,
-  tokenProgramId: PublicKey,
+  xuniConfig: TokenConfig,
   item: MultiTokenTransferItem,
   recordUpdateInstructions: TransactionInstruction[],
   feeBufferMultiplier: number = 1.2
@@ -635,7 +637,7 @@ export async function multiTokenTransfer(
     const recipient = new PublicKey(item.recipientAddress);
     const transaction = new Transaction();
 
-    // Get payer's token accounts
+    // Get payer's token accounts (each token may use different program)
     const xnmFromAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
@@ -644,7 +646,7 @@ export async function multiTokenTransfer(
       false,
       undefined,
       undefined,
-      tokenProgramId
+      xnmConfig.programId
     );
 
     const xblkFromAccount = await getOrCreateAssociatedTokenAccount(
@@ -655,26 +657,44 @@ export async function multiTokenTransfer(
       false,
       undefined,
       undefined,
-      tokenProgramId
+      xblkConfig.programId
     );
 
-    // Get recipient ATAs
+    const xuniFromAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      xuniConfig.mint,
+      payer.publicKey,
+      false,
+      undefined,
+      undefined,
+      xuniConfig.programId
+    );
+
+    // Get recipient ATAs (using each token's program)
     const xnmAta = getAssociatedTokenAddressSync(
       xnmConfig.mint,
       recipient,
       true, // allowOwnerOffCurve
-      tokenProgramId
+      xnmConfig.programId
     );
 
     const xblkAta = getAssociatedTokenAddressSync(
       xblkConfig.mint,
       recipient,
       true, // allowOwnerOffCurve
-      tokenProgramId
+      xblkConfig.programId
+    );
+
+    const xuniAta = getAssociatedTokenAddressSync(
+      xuniConfig.mint,
+      recipient,
+      true, // allowOwnerOffCurve
+      xuniConfig.programId
     );
 
     // Check which ATAs exist
-    const [xnmAtaInfo, xblkAtaInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta]);
+    const [xnmAtaInfo, xblkAtaInfo, xuniAtaInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
 
     // Create XNM ATA if needed and we have XNM to transfer
     if (!xnmAtaInfo && item.xnmAmount > 0n) {
@@ -684,7 +704,7 @@ export async function multiTokenTransfer(
           xnmAta,
           recipient,
           xnmConfig.mint,
-          tokenProgramId
+          xnmConfig.programId
         )
       );
     }
@@ -697,7 +717,20 @@ export async function multiTokenTransfer(
           xblkAta,
           recipient,
           xblkConfig.mint,
-          tokenProgramId
+          xblkConfig.programId
+        )
+      );
+    }
+
+    // Create XUNI ATA if needed and we have XUNI to transfer
+    if (!xuniAtaInfo && item.xuniAmount > 0n) {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          payer.publicKey,
+          xuniAta,
+          recipient,
+          xuniConfig.mint,
+          xuniConfig.programId
         )
       );
     }
@@ -711,7 +744,7 @@ export async function multiTokenTransfer(
           payer.publicKey,
           item.xnmAmount,
           [],
-          tokenProgramId
+          xnmConfig.programId
         )
       );
     }
@@ -725,7 +758,21 @@ export async function multiTokenTransfer(
           payer.publicKey,
           item.xblkAmount,
           [],
-          tokenProgramId
+          xblkConfig.programId
+        )
+      );
+    }
+
+    // Add XUNI transfer if amount > 0
+    if (item.xuniAmount > 0n) {
+      transaction.add(
+        createTransferInstruction(
+          xuniFromAccount.address,
+          xuniAta,
+          payer.publicKey,
+          item.xuniAmount,
+          [],
+          xuniConfig.programId
         )
       );
     }
@@ -738,8 +785,10 @@ export async function multiTokenTransfer(
     logger.trace({
       xnmAtaExists: !!xnmAtaInfo,
       xblkAtaExists: !!xblkAtaInfo,
+      xuniAtaExists: !!xuniAtaInfo,
       xnmTransfer: item.xnmAmount > 0n,
       xblkTransfer: item.xblkAmount > 0n,
+      xuniTransfer: item.xuniAmount > 0n,
       recordInstructions: recordUpdateInstructions.length,
       totalInstructions: transaction.instructions.length,
     }, 'Building multi-token transaction');
