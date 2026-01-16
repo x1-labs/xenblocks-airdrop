@@ -28,6 +28,8 @@ export interface MultiTokenDelta {
   xnmPrevious: bigint;
   xblkPrevious: bigint;
   xuniPrevious: bigint;
+  /** Native token airdrop amount (only for new records meeting XNM threshold) */
+  nativeAmount: bigint;
 }
 
 /** On-chain snapshot for a single recipient (all tokens) */
@@ -35,6 +37,8 @@ export interface OnChainSnapshot {
   xnmAirdropped: bigint;
   xblkAirdropped: bigint;
   xuniAirdropped: bigint;
+  /** Native token (XNT) airdropped amount (from reserved[0]) */
+  nativeAirdropped: bigint;
 }
 
 /** Multi-token airdrop result for a single recipient */
@@ -44,6 +48,8 @@ export interface MultiTokenAirdropResult {
   xnmAmount: bigint;
   xblkAmount: bigint;
   xuniAmount: bigint;
+  /** Native token amount sent (0 if not eligible) */
+  nativeAmount: bigint;
   txSignature: string | null;
   status: 'success' | 'failed';
   errorMessage?: string;

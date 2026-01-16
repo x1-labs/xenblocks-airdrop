@@ -4,6 +4,7 @@ import {
   PublicKey,
   sendAndConfirmTransaction,
   SendTransactionError,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
   TransactionMessage,
@@ -139,6 +140,8 @@ export interface MultiTokenTransferItem {
   xnmAmount: bigint;
   xblkAmount: bigint;
   xuniAmount: bigint;
+  /** Native token amount to transfer (in lamports) */
+  nativeAmount: bigint;
 }
 
 export interface MultiTokenBatchResult {
@@ -777,6 +780,17 @@ export async function multiTokenTransfer(
       );
     }
 
+    // Add native token transfer if amount > 0
+    if (item.nativeAmount > 0n) {
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: payer.publicKey,
+          toPubkey: recipient,
+          lamports: item.nativeAmount,
+        })
+      );
+    }
+
     // Add record update instructions
     for (const instruction of recordUpdateInstructions) {
       transaction.add(instruction);
@@ -789,6 +803,7 @@ export async function multiTokenTransfer(
       xnmTransfer: item.xnmAmount > 0n,
       xblkTransfer: item.xblkAmount > 0n,
       xuniTransfer: item.xuniAmount > 0n,
+      nativeTransfer: item.nativeAmount > 0n,
       recordInstructions: recordUpdateInstructions.length,
       totalInstructions: transaction.instructions.length,
     }, 'Building multi-token transaction');

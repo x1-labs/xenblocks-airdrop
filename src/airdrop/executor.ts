@@ -145,6 +145,11 @@ export async function executeAirdrop(
       dryRun: config.dryRun,
       concurrency: config.concurrency,
       feeBuffer: `${((config.feeBufferMultiplier - 1) * 100).toFixed(0)}%`,
+      nativeAirdrop: {
+        enabled: config.nativeAirdrop.enabled,
+        amount: formatTokenAmount(config.nativeAirdrop.amount, 9),
+        minXnm: formatTokenAmount(config.nativeAirdrop.minXnmBalance, 9),
+      },
     },
     'Configuration'
   );
@@ -237,15 +242,16 @@ export async function executeAirdrop(
   );
   logger.info({ existingRecords: snapshots.size }, 'Found existing on-chain records');
 
-  // Calculate multi-token deltas
-  const deltas = calculateMultiTokenDeltas(miners, snapshots);
-  const { totalXnm, totalXblk, totalXuni } = calculateMultiTokenTotals(deltas);
+  // Calculate multi-token deltas (including native airdrop eligibility)
+  const deltas = calculateMultiTokenDeltas(miners, snapshots, config.nativeAirdrop);
+  const { totalXnm, totalXblk, totalXuni, totalNative } = calculateMultiTokenTotals(deltas);
 
   logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
   logger.info({
     xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
     xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
     xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
+    nativeNeeded: formatTokenAmount(totalNative, 9),
   }, 'Total tokens needed');
 
   // Check balances
@@ -276,6 +282,19 @@ export async function executeAirdrop(
     }
   }
 
+  // Check native balance for native airdrops (in addition to fees)
+  if (config.nativeAirdrop.enabled && totalNative > 0n) {
+    const totalNativeNeeded = totalNative + config.minFeeBalance;
+    if (BigInt(nativeBalance) < totalNativeNeeded) {
+      const shortfall = formatTokenAmount(totalNativeNeeded - BigInt(nativeBalance), 9);
+      logger.warn({ shortfall, token: 'XNT (native)' }, 'Insufficient native balance for airdrops');
+      if (!config.dryRun) {
+        logger.error('Cannot proceed with insufficient native balance');
+        return;
+      }
+    }
+  }
+
   // Process airdrops
   logger.info({ recipients: deltas.length, concurrency: config.concurrency }, 'Starting combined airdrop...');
 
@@ -301,6 +320,9 @@ export async function executeAirdrop(
   const totalXuniSent = results
     .filter((r) => r.status === 'success')
     .reduce((sum, r) => sum + r.xuniAmount, 0n);
+  const totalNativeSent = results
+    .filter((r) => r.status === 'success')
+    .reduce((sum, r) => sum + r.nativeAmount, 0n);
 
   // Update on-chain run totals
   if (!config.dryRun && successCount > 0) {
@@ -323,6 +345,7 @@ export async function executeAirdrop(
     xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
     xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
     xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
+    nativeSent: formatTokenAmount(totalNativeSent, 9),
   }, 'Airdrop complete');
 }
 
@@ -341,7 +364,7 @@ async function processSingleRecipient(
 ): Promise<MultiTokenAirdropResult> {
   const solWallet = new PublicKey(delta.walletAddress);
 
-  // Build single record update instruction for all three tokens
+  // Build single record update instruction for all tokens (including native)
   const recordInstruction = hasExistingRecord
     ? createUpdateRecordInstruction(
         config.airdropTrackerProgramId,
@@ -350,7 +373,8 @@ async function processSingleRecipient(
         delta.ethAddress,
         delta.xnmDelta,
         delta.xblkDelta,
-        delta.xuniDelta
+        delta.xuniDelta,
+        delta.nativeAmount
       )
     : createInitializeAndUpdateInstruction(
         config.airdropTrackerProgramId,
@@ -359,7 +383,8 @@ async function processSingleRecipient(
         delta.ethAddress,
         delta.xnmDelta,
         delta.xblkDelta,
-        delta.xuniDelta
+        delta.xuniDelta,
+        delta.nativeAmount
       );
 
   const transferItem: MultiTokenTransferItem = {
@@ -368,6 +393,7 @@ async function processSingleRecipient(
     xnmAmount: delta.xnmDelta,
     xblkAmount: delta.xblkDelta,
     xuniAmount: delta.xuniDelta,
+    nativeAmount: delta.nativeAmount,
   };
 
   // Execute multi-token transfer
@@ -386,6 +412,8 @@ async function processSingleRecipient(
   const xblkFormatted = formatTokenAmount(delta.xblkDelta, xblkConfig.decimals);
   const xuniFormatted = formatTokenAmount(delta.xuniDelta, xuniConfig.decimals);
 
+  const nativeFormatted = formatTokenAmount(delta.nativeAmount, 9);
+
   if (result.success) {
     logger.trace(
       { tx: result.txSignature, simulatedCU: result.simulatedCU, limitCU: result.computeUnitLimit },
@@ -402,6 +430,7 @@ async function processSingleRecipient(
       xuniApi: delta.xuniApiAmount,
       xuniPrev: formatTokenAmount(delta.xuniPrevious, xuniConfig.decimals),
       xuniDelta: xuniFormatted,
+      ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
     }, 'Transfer successful');
 
     return {
@@ -410,6 +439,7 @@ async function processSingleRecipient(
       xnmAmount: delta.xnmDelta,
       xblkAmount: delta.xblkDelta,
       xuniAmount: delta.xuniDelta,
+      nativeAmount: delta.nativeAmount,
       txSignature: result.txSignature!,
       status: 'success',
     };
@@ -420,6 +450,7 @@ async function processSingleRecipient(
       xnmDelta: xnmFormatted,
       xblkDelta: xblkFormatted,
       xuniDelta: xuniFormatted,
+      ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
       error: result.errorMessage,
     }, 'Transfer failed');
 
@@ -429,6 +460,7 @@ async function processSingleRecipient(
       xnmAmount: delta.xnmDelta,
       xblkAmount: delta.xblkDelta,
       xuniAmount: delta.xuniDelta,
+      nativeAmount: delta.nativeAmount,
       txSignature: null,
       status: 'failed',
       errorMessage: result.errorMessage,
@@ -464,6 +496,7 @@ async function processMultiTokenAirdrops(
         xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
         xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
         xuniDelta: formatTokenAmount(delta.xuniDelta, xuniConfig.decimals),
+        ...(delta.nativeAmount > 0n && { nativeAmount: formatTokenAmount(delta.nativeAmount, 9) }),
       }, '[DRY RUN] Would send tokens');
 
       results.push({
@@ -472,6 +505,7 @@ async function processMultiTokenAirdrops(
         xnmAmount: delta.xnmDelta,
         xblkAmount: delta.xblkDelta,
         xuniAmount: delta.xuniDelta,
+        nativeAmount: delta.nativeAmount,
         txSignature: null,
         status: 'success',
       });

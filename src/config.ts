@@ -13,6 +13,12 @@ export interface TokenConfig {
   programId: PublicKey;
 }
 
+export interface NativeAirdropConfig {
+  enabled: boolean;
+  amount: bigint; // Amount in lamports (1 XNT = 1e9 lamports)
+  minXnmBalance: bigint; // Minimum XNM balance required (in base units)
+}
+
 export interface Config {
   tokens: TokenConfig[];
   airdropTrackerProgramId: PublicKey;
@@ -24,6 +30,7 @@ export interface Config {
   batchSize: number;
   concurrency: number;
   feeBufferMultiplier: number;
+  nativeAirdrop: NativeAirdropConfig;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
@@ -124,6 +131,19 @@ export function loadConfig(): Config {
     parseFloat(process.env.FEE_BUFFER_MULTIPLIER || '1.2')
   );
 
+  // Parse native airdrop config
+  const nativeAirdropEnabled = process.env.NATIVE_AIRDROP_ENABLED === 'true';
+
+  // Native airdrop amount (default 1 XNT = 1e9 lamports)
+  const nativeAirdropAmountInput = parseFloat(process.env.NATIVE_AIRDROP_AMOUNT || '1');
+  const nativeAirdropAmount = BigInt(Math.floor(nativeAirdropAmountInput * 1e9));
+
+  // Minimum XNM balance required for native airdrop (default 10000 XNM)
+  // Use XNM decimals (default 9) for conversion
+  const xnmDecimals = parseInt(process.env.XNM_DECIMALS || '9');
+  const nativeAirdropMinXnmInput = parseFloat(process.env.NATIVE_AIRDROP_MIN_XNM || '10000');
+  const nativeAirdropMinXnm = BigInt(Math.floor(nativeAirdropMinXnmInput * Math.pow(10, xnmDecimals)));
+
   return {
     tokens,
     airdropTrackerProgramId: new PublicKey(
@@ -139,5 +159,10 @@ export function loadConfig(): Config {
     batchSize,
     concurrency,
     feeBufferMultiplier,
+    nativeAirdrop: {
+      enabled: nativeAirdropEnabled,
+      amount: nativeAirdropAmount,
+      minXnmBalance: nativeAirdropMinXnm,
+    },
   };
 }

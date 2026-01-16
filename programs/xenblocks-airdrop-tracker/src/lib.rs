@@ -76,12 +76,14 @@ pub mod xenblocks_airdrop_tracker {
     }
 
     /// Update an existing airdrop record after a successful transfer
-    /// Updates all three token amounts at once
+    /// Updates all three token amounts plus native amount at once
+    /// native_amount is stored in reserved[0]
     pub fn update_record(
         ctx: Context<UpdateRecord>,
         xnm_amount: u64,
         xblk_amount: u64,
         xuni_amount: u64,
+        native_amount: u64,
     ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
 
@@ -97,27 +99,33 @@ pub mod xenblocks_airdrop_tracker {
             .xuni_airdropped
             .checked_add(xuni_amount)
             .ok_or(ErrorCode::Overflow)?;
+        record.reserved[0] = record.reserved[0]
+            .checked_add(native_amount)
+            .ok_or(ErrorCode::Overflow)?;
 
         record.last_updated = Clock::get()?.unix_timestamp;
 
         msg!(
-            "Updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}",
+            "Updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}, native={}",
             record.sol_wallet,
             xnm_amount,
             xblk_amount,
-            xuni_amount
+            xuni_amount,
+            native_amount
         );
         Ok(())
     }
 
     /// Initialize a record and immediately update it (for new wallets during airdrop)
-    /// Sets all three token amounts at once
+    /// Sets all three token amounts plus native amount at once
+    /// native_amount is stored in reserved[0]
     pub fn initialize_and_update(
         ctx: Context<InitializeRecord>,
         eth_address: [u8; 42],
         xnm_amount: u64,
         xblk_amount: u64,
         xuni_amount: u64,
+        native_amount: u64,
     ) -> Result<()> {
         let record = &mut ctx.accounts.airdrop_record;
         record.sol_wallet = ctx.accounts.sol_wallet.key();
@@ -125,16 +133,17 @@ pub mod xenblocks_airdrop_tracker {
         record.xnm_airdropped = xnm_amount;
         record.xblk_airdropped = xblk_amount;
         record.xuni_airdropped = xuni_amount;
-        record.reserved = [0u64; 5];
+        record.reserved = [native_amount, 0, 0, 0, 0];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
         msg!(
-            "Initialized and updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}",
+            "Initialized and updated airdrop record: wallet={}, xnm={}, xblk={}, xuni={}, native={}",
             ctx.accounts.sol_wallet.key(),
             xnm_amount,
             xblk_amount,
-            xuni_amount
+            xuni_amount,
+            native_amount
         );
         Ok(())
     }
@@ -317,7 +326,9 @@ pub struct AirdropRecord {
     pub xblk_airdropped: u64, // 8 bytes
     /// Cumulative XUNI amount airdropped (in token base units, 9 decimals)
     pub xuni_airdropped: u64, // 8 bytes
-    /// Reserved space for future tokens (8 bytes each * 5 = 40 bytes)
+    /// Reserved space for future use (8 bytes each * 5 = 40 bytes)
+    /// reserved[0] = native token (XNT) airdropped amount
+    /// reserved[1-4] = unused
     pub reserved: [u64; 5], // 40 bytes
     /// Unix timestamp of last update
     pub last_updated: i64, // 8 bytes

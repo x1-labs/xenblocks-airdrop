@@ -210,14 +210,14 @@ export function makeSnapshotKey(solAddress: string, ethAddress: string): string 
 /**
  * Fetch on-chain snapshots for all miners in batch (all tokens)
  * Uses getProgramAccounts for efficiency - single RPC call instead of batched fetches
- * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped, xuniAirdropped }
+ * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped, xuniAirdropped, nativeAirdropped }
  */
 export async function fetchAllMultiTokenSnapshots(
   connection: Connection,
   programId: PublicKey,
   _miners: { solAddress: string; ethAddress: string }[]
-): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint }>> {
-  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint }>();
+): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>> {
+  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>();
 
   // Fetch all airdrop record accounts in one call
   const accounts = await connection.getProgramAccounts(programId, {
@@ -247,6 +247,7 @@ export async function fetchAllMultiTokenSnapshots(
         xnmAirdropped: record.xnmAirdropped,
         xblkAirdropped: record.xblkAirdropped,
         xuniAirdropped: record.xuniAirdropped,
+        nativeAirdropped: record.reserved[0] ?? 0n,
       });
     } catch {
       // Skip malformed accounts
@@ -381,7 +382,7 @@ export function createInitializeRecordInstruction(
 
 /**
  * Create instruction to update an existing airdrop record
- * Updates all three token amounts at once
+ * Updates all three token amounts plus native amount at once
  */
 export function createUpdateRecordInstruction(
   programId: PublicKey,
@@ -390,7 +391,8 @@ export function createUpdateRecordInstruction(
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
-  xuniAmount: bigint
+  xuniAmount: bigint,
+  nativeAmount: bigint = 0n
 ): TransactionInstruction {
   const [airdropRecord] = deriveAirdropRecordPDA(
     programId,
@@ -401,12 +403,13 @@ export function createUpdateRecordInstruction(
   // Anchor instruction discriminator for "update_record"
   const discriminator = Buffer.from([54, 194, 108, 162, 199, 12, 5, 60]);
 
-  // xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes)
-  const data = Buffer.alloc(discriminator.length + 8 + 8 + 8);
+  // xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
+  const data = Buffer.alloc(discriminator.length + 8 + 8 + 8 + 8);
   discriminator.copy(data, 0);
   data.writeBigUInt64LE(xnmAmount, 8);
   data.writeBigUInt64LE(xblkAmount, 16);
   data.writeBigUInt64LE(xuniAmount, 24);
+  data.writeBigUInt64LE(nativeAmount, 32);
 
   return new TransactionInstruction({
     keys: [
@@ -420,7 +423,7 @@ export function createUpdateRecordInstruction(
 
 /**
  * Create instruction to initialize and update in one call
- * Sets all three token amounts at once
+ * Sets all three token amounts plus native amount at once
  */
 export function createInitializeAndUpdateInstruction(
   programId: PublicKey,
@@ -429,7 +432,8 @@ export function createInitializeAndUpdateInstruction(
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
-  xuniAmount: bigint
+  xuniAmount: bigint,
+  nativeAmount: bigint = 0n
 ): TransactionInstruction {
   const [airdropRecord] = deriveAirdropRecordPDA(
     programId,
@@ -441,7 +445,7 @@ export function createInitializeAndUpdateInstruction(
   // Anchor instruction discriminator for "initialize_and_update"
   const discriminator = Buffer.from([110, 48, 174, 47, 71, 105, 223, 39]);
 
-  // eth_address (42 bytes) + xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes)
+  // eth_address (42 bytes) + xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
   const xnmBuffer = Buffer.alloc(8);
   xnmBuffer.writeBigUInt64LE(xnmAmount);
 
@@ -451,12 +455,16 @@ export function createInitializeAndUpdateInstruction(
   const xuniBuffer = Buffer.alloc(8);
   xuniBuffer.writeBigUInt64LE(xuniAmount);
 
+  const nativeBuffer = Buffer.alloc(8);
+  nativeBuffer.writeBigUInt64LE(nativeAmount);
+
   const data = Buffer.concat([
     discriminator,
     Buffer.from(ethBytes),
     xnmBuffer,
     xblkBuffer,
     xuniBuffer,
+    nativeBuffer,
   ]);
 
   return new TransactionInstruction({
@@ -566,7 +574,7 @@ export async function updateOnChainRunTotals(
 /**
  * Update on-chain record after a successful airdrop
  * Creates the record if it doesn't exist
- * Updates all three token amounts at once
+ * Updates all three token amounts plus native amount at once
  */
 export async function updateOnChainRecord(
   connection: Connection,
@@ -576,7 +584,8 @@ export async function updateOnChainRecord(
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
-  xuniAmount: bigint
+  xuniAmount: bigint,
+  nativeAmount: bigint = 0n
 ): Promise<string> {
   const [pda] = deriveAirdropRecordPDA(programId, solWallet, ethAddress);
   const accountInfo = await connection.getAccountInfo(pda);
@@ -593,7 +602,8 @@ export async function updateOnChainRecord(
         ethAddress,
         xnmAmount,
         xblkAmount,
-        xuniAmount
+        xuniAmount,
+        nativeAmount
       )
     );
   } else {
@@ -606,7 +616,8 @@ export async function updateOnChainRecord(
         ethAddress,
         xnmAmount,
         xblkAmount,
-        xuniAmount
+        xuniAmount,
+        nativeAmount
       )
     );
   }

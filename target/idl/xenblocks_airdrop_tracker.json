@@ -94,7 +94,8 @@
       "name": "initialize_and_update",
       "docs": [
         "Initialize a record and immediately update it (for new wallets during airdrop)",
-        "Sets all three token amounts at once"
+        "Sets all three token amounts plus native amount at once",
+        "native_amount is stored in reserved[0]"
       ],
       "discriminator": [
         110,
@@ -144,6 +145,10 @@
         },
         {
           "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
           "type": "u64"
         }
       ]
@@ -243,7 +248,8 @@
       "name": "update_record",
       "docs": [
         "Update an existing airdrop record after a successful transfer",
-        "Updates all three token amounts at once"
+        "Updates all three token amounts plus native amount at once",
+        "native_amount is stored in reserved[0]"
       ],
       "discriminator": [
         54,
@@ -277,6 +283,10 @@
         },
         {
           "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
           "type": "u64"
         }
       ]
@@ -455,7 +465,9 @@
           {
             "name": "reserved",
             "docs": [
-              "Reserved space for future tokens (8 bytes each * 5 = 40 bytes)"
+              "Reserved space for future use (8 bytes each * 5 = 40 bytes)",
+              "reserved[0] = native token (XNT) airdropped amount",
+              "reserved[1-4] = unused"
             ],
             "type": {
               "array": [
