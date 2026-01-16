@@ -104,7 +104,7 @@ export function loadConfig(): Config {
   }
 
   // Token program: 'token' (default) or 'token-2022'
-  const defaultTokenProgram = process.env.TOKEN_PROGRAM || 'token';
+  const defaultTokenProgram = process.env.TOKEN_PROGRAM || 'token-2022';
   const defaultProgramId =
     defaultTokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
 

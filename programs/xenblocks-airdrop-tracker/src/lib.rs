@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6");
+declare_id!("xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv");
 
 #[program]
 pub mod xenblocks_airdrop_tracker {

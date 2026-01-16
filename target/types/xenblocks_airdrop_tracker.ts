@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/xenblocks_airdrop_tracker.json`.
  */
 export type XenblocksAirdropTracker = {
-  "address": "JAzubT5NSiyRkLgaFRTkrdLGzzMb57CVhMhdDCiqoRu6",
+  "address": "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv",
   "metadata": {
     "name": "xenblocksAirdropTracker",
     "version": "0.1.0",
