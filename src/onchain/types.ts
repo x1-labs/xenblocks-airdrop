@@ -30,7 +30,8 @@ export interface AirdropRecord {
   xnmAirdropped: bigint;
   xblkAirdropped: bigint;
   xuniAirdropped: bigint;
-  reserved: bigint[]; // [u64; 5] - reserved for future tokens
+  nativeAirdropped: bigint;
+  reserved: bigint[]; // [u64; 4] - reserved for future tokens
   lastUpdated: bigint;
   bump: number;
 }
@@ -84,7 +85,8 @@ export const AIRDROP_RUN_SIZE = 8 + 8 + 8 + 4 + 8 + 1 + 1; // 38 bytes
  * - 8 bytes: xnm_airdropped (u64)
  * - 8 bytes: xblk_airdropped (u64)
  * - 8 bytes: xuni_airdropped (u64)
- * - 40 bytes: reserved ([u64; 5])
+ * - 8 bytes: native_airdropped (u64)
+ * - 32 bytes: reserved ([u64; 4])
  * - 8 bytes: last_updated (i64)
  * - 1 byte: bump (u8)
  */
@@ -95,12 +97,13 @@ export const AIRDROP_RECORD_OFFSETS = {
   XNM_AIRDROPPED: 8 + 32 + 42,
   XBLK_AIRDROPPED: 8 + 32 + 42 + 8,
   XUNI_AIRDROPPED: 8 + 32 + 42 + 8 + 8,
-  RESERVED: 8 + 32 + 42 + 8 + 8 + 8,
-  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 8 + 40,
-  BUMP: 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8,
+  NATIVE_AIRDROPPED: 8 + 32 + 42 + 8 + 8 + 8,
+  RESERVED: 8 + 32 + 42 + 8 + 8 + 8 + 8,
+  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32,
+  BUMP: 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32 + 8,
 } as const;
 
-export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 8 + 40 + 8 + 1; // 155 bytes
+export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32 + 8 + 1; // 155 bytes
 
 /**
  * Offset constants for AirdropRecord deserialization (OLD/legacy schema)

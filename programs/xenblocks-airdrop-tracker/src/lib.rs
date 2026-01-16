@@ -64,7 +64,8 @@ pub mod xenblocks_airdrop_tracker {
         record.xnm_airdropped = 0;
         record.xblk_airdropped = 0;
         record.xuni_airdropped = 0;
-        record.reserved = [0u64; 5];
+        record.native_airdropped = 0;
+        record.reserved = [0u64; 4];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
@@ -77,7 +78,6 @@ pub mod xenblocks_airdrop_tracker {
 
     /// Update an existing airdrop record after a successful transfer
     /// Updates all three token amounts plus native amount at once
-    /// native_amount is stored in reserved[0]
     pub fn update_record(
         ctx: Context<UpdateRecord>,
         xnm_amount: u64,
@@ -99,7 +99,8 @@ pub mod xenblocks_airdrop_tracker {
             .xuni_airdropped
             .checked_add(xuni_amount)
             .ok_or(ErrorCode::Overflow)?;
-        record.reserved[0] = record.reserved[0]
+        record.native_airdropped = record
+            .native_airdropped
             .checked_add(native_amount)
             .ok_or(ErrorCode::Overflow)?;
 
@@ -118,7 +119,6 @@ pub mod xenblocks_airdrop_tracker {
 
     /// Initialize a record and immediately update it (for new wallets during airdrop)
     /// Sets all three token amounts plus native amount at once
-    /// native_amount is stored in reserved[0]
     pub fn initialize_and_update(
         ctx: Context<InitializeRecord>,
         eth_address: [u8; 42],
@@ -133,7 +133,8 @@ pub mod xenblocks_airdrop_tracker {
         record.xnm_airdropped = xnm_amount;
         record.xblk_airdropped = xblk_amount;
         record.xuni_airdropped = xuni_amount;
-        record.reserved = [native_amount, 0, 0, 0, 0];
+        record.native_airdropped = native_amount;
+        record.reserved = [0u64; 4];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
@@ -326,10 +327,10 @@ pub struct AirdropRecord {
     pub xblk_airdropped: u64, // 8 bytes
     /// Cumulative XUNI amount airdropped (in token base units, 9 decimals)
     pub xuni_airdropped: u64, // 8 bytes
-    /// Reserved space for future use (8 bytes each * 5 = 40 bytes)
-    /// reserved[0] = native token (XNT) airdropped amount
-    /// reserved[1-4] = unused
-    pub reserved: [u64; 5], // 40 bytes
+    /// Cumulative native token (XNT) airdropped (in lamports, 9 decimals)
+    pub native_airdropped: u64, // 8 bytes
+    /// Reserved space for future use (8 bytes each * 4 = 32 bytes)
+    pub reserved: [u64; 4], // 32 bytes
     /// Unix timestamp of last update
     pub last_updated: i64, // 8 bytes
     /// PDA bump seed for derivation

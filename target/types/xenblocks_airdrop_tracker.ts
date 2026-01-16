@@ -100,8 +100,7 @@ export type XenblocksAirdropTracker = {
       "name": "initializeAndUpdate",
       "docs": [
         "Initialize a record and immediately update it (for new wallets during airdrop)",
-        "Sets all three token amounts plus native amount at once",
-        "native_amount is stored in reserved[0]"
+        "Sets all three token amounts plus native amount at once"
       ],
       "discriminator": [
         110,
@@ -254,8 +253,7 @@ export type XenblocksAirdropTracker = {
       "name": "updateRecord",
       "docs": [
         "Update an existing airdrop record after a successful transfer",
-        "Updates all three token amounts plus native amount at once",
-        "native_amount is stored in reserved[0]"
+        "Updates all three token amounts plus native amount at once"
       ],
       "discriminator": [
         54,
@@ -469,16 +467,21 @@ export type XenblocksAirdropTracker = {
             "type": "u64"
           },
           {
+            "name": "nativeAirdropped",
+            "docs": [
+              "Cumulative native token (XNT) airdropped (in lamports, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
             "name": "reserved",
             "docs": [
-              "Reserved space for future use (8 bytes each * 5 = 40 bytes)",
-              "reserved[0] = native token (XNT) airdropped amount",
-              "reserved[1-4] = unused"
+              "Reserved space for future use (8 bytes each * 4 = 32 bytes)"
             ],
             "type": {
               "array": [
                 "u64",
-                5
+                4
               ]
             }
           },

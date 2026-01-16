@@ -93,13 +93,14 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
       xnmAirdropped: totalAirdropped, // Legacy uses single field, treat as XNM
       xblkAirdropped: 0n,
       xuniAirdropped: 0n,
-      reserved: [0n, 0n, 0n, 0n, 0n],
+      nativeAirdropped: 0n,
+      reserved: [0n, 0n, 0n, 0n],
       lastUpdated,
       bump,
     };
   }
 
-  // New schema with separate XNM/XBLK/XUNI fields and reserved array
+  // New schema with separate XNM/XBLK/XUNI fields, native field, and reserved array
   const xnmAirdropped = data.readBigUInt64LE(
     AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
   );
@@ -112,9 +113,13 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
     AIRDROP_RECORD_OFFSETS.XUNI_AIRDROPPED
   );
 
-  // Read reserved array (5 u64 values)
+  const nativeAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_OFFSETS.NATIVE_AIRDROPPED
+  );
+
+  // Read reserved array (4 u64 values)
   const reserved: bigint[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     reserved.push(
       data.readBigUInt64LE(AIRDROP_RECORD_OFFSETS.RESERVED + i * 8)
     );
@@ -130,6 +135,7 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
     xnmAirdropped,
     xblkAirdropped,
     xuniAirdropped,
+    nativeAirdropped,
     reserved,
     lastUpdated,
     bump,
@@ -247,7 +253,7 @@ export async function fetchAllMultiTokenSnapshots(
         xnmAirdropped: record.xnmAirdropped,
         xblkAirdropped: record.xblkAirdropped,
         xuniAirdropped: record.xuniAirdropped,
-        nativeAirdropped: record.reserved[0] ?? 0n,
+        nativeAirdropped: record.nativeAirdropped,
       });
     } catch {
       // Skip malformed accounts
