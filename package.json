@@ -12,8 +12,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "webapp:dev": "npm run dev --prefix webapp"
+    "test:watch": "vitest"
   },
   "author": "",
   "license": "ISC",
