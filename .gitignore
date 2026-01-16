@@ -1,2 +1,35 @@
-/.env
-/.idea/
+# Environment
+.env
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+airdrop-log.json
+airdrop-failures.json
+
+# Keys
+*-keypair.json
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Rust/Anchor build output (keep types and idl)
+target/*
+!target/types/
+!target/idl/

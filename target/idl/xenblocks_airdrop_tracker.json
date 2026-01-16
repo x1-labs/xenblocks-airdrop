@@ -1,0 +1,579 @@
+{
+  "address": "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv",
+  "metadata": {
+    "name": "xenblocks_airdrop_tracker",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "On-chain airdrop tracking program for Xenblocks tokens"
+  },
+  "instructions": [
+    {
+      "name": "close_record",
+      "docs": [
+        "Close an airdrop record and reclaim rent (admin only)"
+      ],
+      "discriminator": [
+        111,
+        192,
+        122,
+        188,
+        38,
+        234,
+        242,
+        249
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_run",
+      "docs": [
+        "Create a new airdrop run"
+      ],
+      "discriminator": [
+        195,
+        241,
+        245,
+        139,
+        101,
+        109,
+        209,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_run",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "dry_run",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "initialize_and_update",
+      "docs": [
+        "Initialize a record and immediately update it (for new wallets during airdrop)",
+        "Sets all three token amounts plus native amount at once"
+      ],
+      "discriminator": [
+        110,
+        48,
+        174,
+        47,
+        71,
+        105,
+        223,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "sol_wallet"
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "eth_address",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        },
+        {
+          "name": "xnm_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xblk_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_record",
+      "docs": [
+        "Initialize a new airdrop record for a wallet/eth pair"
+      ],
+      "discriminator": [
+        92,
+        106,
+        172,
+        44,
+        148,
+        3,
+        42,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "sol_wallet"
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "eth_address",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_state",
+      "docs": [
+        "Initialize the global state (one-time setup)"
+      ],
+      "discriminator": [
+        190,
+        171,
+        224,
+        219,
+        217,
+        72,
+        199,
+        176
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_record",
+      "docs": [
+        "Update an existing airdrop record after a successful transfer",
+        "Updates all three token amounts plus native amount at once"
+      ],
+      "discriminator": [
+        54,
+        194,
+        108,
+        162,
+        199,
+        12,
+        5,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "xnm_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xblk_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_run_totals",
+      "docs": [
+        "Update run totals after completion"
+      ],
+      "discriminator": [
+        38,
+        24,
+        28,
+        212,
+        47,
+        29,
+        149,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "airdrop_run.run_id",
+                "account": "AirdropRun"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "total_recipients",
+          "type": "u32"
+        },
+        {
+          "name": "total_amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AirdropRecord",
+      "discriminator": [
+        1,
+        181,
+        208,
+        237,
+        232,
+        225,
+        112,
+        229
+      ]
+    },
+    {
+      "name": "AirdropRun",
+      "discriminator": [
+        174,
+        215,
+        129,
+        23,
+        242,
+        50,
+        97,
+        35
+      ]
+    },
+    {
+      "name": "GlobalState",
+      "discriminator": [
+        163,
+        46,
+        74,
+        168,
+        216,
+        123,
+        133,
+        98
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow when updating total"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: signer is not the authority"
+    }
+  ],
+  "types": [
+    {
+      "name": "AirdropRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "sol_wallet",
+            "docs": [
+              "The Solana wallet address that receives airdrops"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "eth_address",
+            "docs": [
+              "The associated ETH address (as UTF-8 bytes, e.g., \"0x1234...\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                42
+              ]
+            }
+          },
+          {
+            "name": "xnm_airdropped",
+            "docs": [
+              "Cumulative XNM amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xblk_airdropped",
+            "docs": [
+              "Cumulative XBLK amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xuni_airdropped",
+            "docs": [
+              "Cumulative XUNI amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "native_airdropped",
+            "docs": [
+              "Cumulative native token (XNT) airdropped (in lamports, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Reserved space for future use (8 bytes each * 4 = 32 bytes)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                4
+              ]
+            }
+          },
+          {
+            "name": "last_updated",
+            "docs": [
+              "Unix timestamp of last update"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed for derivation"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AirdropRun",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run_id",
+            "docs": [
+              "Unique run ID"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "run_date",
+            "docs": [
+              "Unix timestamp when run started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "total_recipients",
+            "docs": [
+              "Number of successful recipients"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "total_amount",
+            "docs": [
+              "Total amount airdropped (in token base units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "dry_run",
+            "docs": [
+              "Whether this was a dry run"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority who can create runs and update records"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "run_counter",
+            "docs": [
+              "Counter for run IDs"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
