@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-XNM Airdrop is a Solana-based token distribution script that rewards miners from the xenblocks.io platform by distributing XNM tokens based on their mining contributions.
+XNM Airdrop is a Solana-based multi-token distribution system that rewards miners from the xenblocks.io platform by distributing XNM, XBLK, and XUNI tokens based on their mining contributions. It uses an on-chain Anchor program to track airdrops and prevent duplicates.
 
 ## Key Commands
 
@@ -13,58 +13,111 @@ XNM Airdrop is a Solana-based token distribution script that rewards miners from
 npm install
 ```
 
-**Note**: The code imports `node-fetch` but it's missing from package.json. Install it with:
-```bash
-npm install node-fetch
-```
-
 ### Run the Airdrop
 ```bash
-node index.js
+# Development (TypeScript with tsx)
+npm run dev
+
+# Production (build first)
+npm run build
+npm start
+```
+
+### Build Solana Program
+```bash
+anchor build
+```
+
+### Linting & Formatting
+```bash
+npm run lint
+npm run lint:fix
+npm run format
+npm run format:check
+```
+
+### Testing
+```bash
+npm test
+npm run test:watch
 ```
 
 ## Architecture
 
+### Project Structure
+```
+├── programs/xnm-airdrop-tracker/  # Anchor program for on-chain tracking
+├── src/
+│   ├── airdrop/                   # Airdrop execution logic
+│   │   ├── executor.ts            # Main airdrop execution
+│   │   ├── delta.ts               # Delta calculation (API - on-chain)
+│   │   └── types.ts               # Airdrop type definitions
+│   ├── onchain/                   # Program client
+│   │   ├── client.ts              # Anchor client wrapper
+│   │   ├── pda.ts                 # PDA derivation helpers
+│   │   └── types.ts               # On-chain type definitions
+│   ├── solana/                    # Solana utilities
+│   │   ├── connection.ts          # RPC connection setup
+│   │   └── transfer.ts            # Token transfer logic
+│   ├── utils/                     # Utilities
+│   │   ├── logger.ts              # Pino logger setup
+│   │   └── format.ts              # Formatting helpers
+│   ├── config.ts                  # Environment configuration
+│   └── index.ts                   # Main entry point
+└── target/                        # Anchor build output (IDL, types)
+```
+
 ### Core Components
 
-1. **index.js** - Single-file airdrop script that:
-   - Fetches miner data from xenblocks.io API (up to 10,000 miners)
-   - Distributes XNM tokens proportionally to Solana addresses
-   - Maintains state via JSON log files to prevent duplicate airdrops
-   - Supports dry-run mode for testing
+1. **On-chain Program** (`programs/xnm-airdrop-tracker/`):
+   - Tracks all airdrop records per wallet
+   - Stores cumulative XNM, XBLK, XUNI amounts
+   - Maintains airdrop run history for auditing
+   - Tracks native token airdrops separately
 
-### Configuration Requirements
+2. **Delta Calculator** (`src/airdrop/delta.ts`):
+   - Fetches current totals from xenblocks.io API
+   - Loads existing on-chain records
+   - Calculates differences to determine pending amounts
 
-Before running:
-1. Set `TOKEN_MINT` in index.js:18 to your actual XNM token mint address
-2. Create `payer-keypair.json` with the wallet that holds the tokens to distribute
-3. Ensure the payer wallet has:
-   - SOL for transaction fees
-   - XNM tokens to distribute
-4. Toggle `DRY_RUN` to `false` when ready for actual distribution
+3. **Executor** (`src/airdrop/executor.ts`):
+   - Batches recipients for efficient processing
+   - Handles concurrent transaction submission
+   - Updates on-chain records atomically with transfers
+
+### Configuration
+
+All configuration is via environment variables (see `.env.example`):
+- `RPC_ENDPOINT`: Solana RPC URL
+- `KEYPAIR_PATH`: Path to payer keypair
+- `AIRDROP_TRACKER_PROGRAM_ID`: Deployed program ID
+- Token mints: `XNM_TOKEN_MINT`, `XBLK_TOKEN_MINT`, `XUNI_TOKEN_MINT`
+- `TOKEN_TYPES`: Which tokens to airdrop (comma-separated)
+- `DRY_RUN`: Test mode flag
+- `NATIVE_AIRDROP_ENABLED`: Enable native XNT distribution
 
 ### State Management
 
-The script maintains two JSON files:
-- `airdrop-log.json` - Records successful transfers with transaction IDs
-- `airdrop-failures.json` - Logs failed transfer attempts with error messages
-
-These files prevent duplicate airdrops and allow resuming after interruptions.
+State is tracked **on-chain** via the Anchor program:
+- `GlobalState`: Authority and run counter
+- `AirdropRun`: Per-run metadata (date, totals, counts)
+- `AirdropRecord`: Per-wallet cumulative amounts + native airdrop flag
 
 ### API Integration
 
-Fetches miner data from:
+Fetches miner data with automatic pagination:
 ```
-https://xenblocks.io/v1/leaderboard?limit=10000&require_sol_address=true
+https://xenblocks.io/v1/leaderboard?require_sol_address=true
 ```
 
-Response format includes:
+Response includes:
 - `solAddress`: Recipient's Solana wallet
-- `xnm`: Amount to airdrop (in base units)
+- `xnm`, `xblk`, `xuni`: Amounts to airdrop
 
 ### Token Operations
 
-Uses Solana SPL Token standard:
-- Creates Associated Token Accounts (ATAs) for recipients if needed
-- Transfers tokens with 6 decimal places precision
-- All amounts in the leaderboard API are in base units (no decimal conversion needed)
+- Supports both SPL Token and Token-2022 programs
+- Per-token program configuration
+- Creates ATAs for recipients as needed
+- Configurable decimals per token
+- Optional native token (XNT) airdrop for first-time recipients

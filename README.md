@@ -8,7 +8,7 @@ A Solana-based multi-token airdrop system that distributes XNM, XBLK, and XUNI t
 - **On-chain tracking**: Solana program tracks all airdrops to prevent duplicates
 - **Delta-based distribution**: Only sends the difference between API totals and on-chain records
 - **Token-2022 support**: Per-token program configuration for SPL Token or Token Extensions
-- **Web dashboard**: View airdrop stats, pending deltas, and wallet lookups
+- **Native token airdrop**: Optional one-time native token (XNT) distribution to new recipients
 
 ## Project Structure
 
@@ -16,11 +16,12 @@ A Solana-based multi-token airdrop system that distributes XNM, XBLK, and XUNI t
 ├── programs/                 # Solana/Anchor program
 │   └── xnm-airdrop-tracker/ # On-chain airdrop tracking
 ├── src/                      # TypeScript airdrop script
-│   ├── airdrop/             # Airdrop execution logic
-│   ├── onchain/             # Program client & types
-│   ├── solana/              # Token transfer utilities
-│   └── utils/               # Logging & formatting
-├── web/                      # React dashboard
+│   ├── airdrop/             # Airdrop execution logic (executor, delta, types)
+│   ├── onchain/             # Program client, PDA helpers & types
+│   ├── solana/              # Connection & token transfer utilities
+│   ├── utils/               # Logger & formatting helpers
+│   ├── config.ts            # Environment configuration
+│   └── index.ts             # Main entry point
 └── target/
     ├── idl/                 # Program IDL
     └── types/               # Generated TypeScript types
@@ -63,15 +64,42 @@ cp .env.example .env
 | `XBLK_TOKEN_MINT`            | XBLK token mint address      |
 | `XUNI_TOKEN_MINT`            | XUNI token mint address      |
 
-### Optional Variables
+### Token Configuration
 
-| Variable        | Default | Description                       |
-|-----------------|---------|-----------------------------------|
-| `TOKEN_TYPES`   | `xnm`   | Comma-separated tokens to airdrop |
-| `TOKEN_PROGRAM` | `token` | Default: `token` or `token-2022`  |
-| `DRY_RUN`       | `false` | Test mode (no actual transfers)   |
-| `CONCURRENCY`   | `4`     | Concurrent transactions           |
-| `BATCH_SIZE`    | `3`     | Recipients per batch              |
+| Variable            | Default | Description                              |
+|---------------------|---------|------------------------------------------|
+| `TOKEN_TYPES`       | `xnm`   | Comma-separated tokens to airdrop        |
+| `TOKEN_PROGRAM`     | `token` | Default: `token` or `token-2022`         |
+| `XNM_DECIMALS`      | `9`     | XNM token decimals                       |
+| `XBLK_DECIMALS`     | `9`     | XBLK token decimals                      |
+| `XUNI_DECIMALS`     | `9`     | XUNI token decimals                      |
+| `*_TOKEN_PROGRAM`   | -       | Per-token program override (e.g. `XUNI_TOKEN_PROGRAM=token-2022`) |
+
+### Airdrop Settings
+
+| Variable               | Default | Description                            |
+|------------------------|---------|----------------------------------------|
+| `DRY_RUN`              | `true`  | Test mode (no actual transfers)        |
+| `CONCURRENCY`          | `4`     | Concurrent transactions                |
+| `BATCH_SIZE`           | `3`     | Recipients per batch                   |
+| `MIN_FEE_BALANCE`      | `10`    | Minimum SOL balance for fees           |
+| `FEE_BUFFER_MULTIPLIER`| `1.2`   | Compute unit estimation buffer         |
+| `PRIORITY_FEE`         | -       | Priority fee in microlamports          |
+
+### Native Token Airdrop
+
+| Variable                  | Default | Description                                |
+|---------------------------|---------|--------------------------------------------|
+| `NATIVE_AIRDROP_ENABLED`  | `false` | Enable native XNT airdrop for new recipients |
+| `NATIVE_AIRDROP_AMOUNT`   | `1`     | Amount of XNT to send (in XNT)             |
+| `NATIVE_AIRDROP_MIN_XNM`  | `10000` | Minimum XNM balance required to receive    |
+
+### Logging
+
+| Variable    | Default       | Description                          |
+|-------------|---------------|--------------------------------------|
+| `LOG_LEVEL` | `info`        | trace, debug, info, warn, error, fatal |
+| `NODE_ENV`  | `development` | development or production            |
 
 See `.env.example` for all options.
 
@@ -80,30 +108,28 @@ See `.env.example` for all options.
 ### Run Airdrop
 
 ```bash
-# Dry run (test mode)
-DRY_RUN=true npm start
+# Development (uses tsx for direct TypeScript execution)
+npm run dev
+
+# Production (requires build first)
+npm run build
+npm start
+
+# Dry run (test mode, set in .env)
+DRY_RUN=true npm run dev
 
 # Production run
 DRY_RUN=false npm start
 ```
 
-### Web Dashboard
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-Configure `web/.env` with RPC endpoint and program ID.
-
 ## How It Works
 
-1. **Fetch miners**: Gets miner data from xenblocks.io API
+1. **Fetch miners**: Gets miner data from xenblocks.io API with automatic pagination
 2. **Load on-chain snapshots**: Reads existing airdrop records from the program
 3. **Calculate deltas**: Determines what each wallet is owed (API total - on-chain record)
 4. **Execute transfers**: Sends tokens and updates on-chain records atomically
-5. **Track runs**: Creates on-chain run records for auditing
+5. **Native airdrop**: Optionally sends one-time XNT to first-time recipients (if enabled)
+6. **Track runs**: Creates on-chain run records for auditing
 
 ## Solana Program
 
