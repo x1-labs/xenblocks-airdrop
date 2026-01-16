@@ -640,37 +640,26 @@ export async function multiTokenTransfer(
     const recipient = new PublicKey(item.recipientAddress);
     const transaction = new Transaction();
 
-    // Get payer's token accounts (each token may use different program)
-    const xnmFromAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      payer,
+    // Derive payer's token account addresses (sync - no RPC calls)
+    // These should already exist since the payer holds the tokens to airdrop
+    const xnmFromAccount = getAssociatedTokenAddressSync(
       xnmConfig.mint,
       payer.publicKey,
       false,
-      undefined,
-      undefined,
       xnmConfig.programId
     );
 
-    const xblkFromAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      payer,
+    const xblkFromAccount = getAssociatedTokenAddressSync(
       xblkConfig.mint,
       payer.publicKey,
       false,
-      undefined,
-      undefined,
       xblkConfig.programId
     );
 
-    const xuniFromAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      payer,
+    const xuniFromAccount = getAssociatedTokenAddressSync(
       xuniConfig.mint,
       payer.publicKey,
       false,
-      undefined,
-      undefined,
       xuniConfig.programId
     );
 
@@ -742,7 +731,7 @@ export async function multiTokenTransfer(
     if (item.xnmAmount > 0n) {
       transaction.add(
         createTransferInstruction(
-          xnmFromAccount.address,
+          xnmFromAccount,
           xnmAta,
           payer.publicKey,
           item.xnmAmount,
@@ -756,7 +745,7 @@ export async function multiTokenTransfer(
     if (item.xblkAmount > 0n) {
       transaction.add(
         createTransferInstruction(
-          xblkFromAccount.address,
+          xblkFromAccount,
           xblkAta,
           payer.publicKey,
           item.xblkAmount,
@@ -770,7 +759,7 @@ export async function multiTokenTransfer(
     if (item.xuniAmount > 0n) {
       transaction.add(
         createTransferInstruction(
-          xuniFromAccount.address,
+          xuniFromAccount,
           xuniAta,
           payer.publicKey,
           item.xuniAmount,
@@ -867,11 +856,85 @@ export async function multiTokenTransfer(
     };
   } catch (error) {
     const errorMessage = extractErrorDetails(error);
+
+    // Enhanced logging for debugging ownership/account issues
     logger.debug({
       errorMessage,
       errorType: error?.constructor?.name,
       recipient: item.recipientAddress,
+      ethAddress: item.ethAddress,
+      amounts: {
+        xnm: item.xnmAmount.toString(),
+        xblk: item.xblkAmount.toString(),
+        xuni: item.xuniAmount.toString(),
+        native: item.nativeAmount.toString(),
+      },
     }, 'Multi-token transfer error');
+
+    // Log detailed account info for IllegalOwner errors
+    if (errorMessage.includes('IllegalOwner')) {
+      logger.error({
+        recipient: item.recipientAddress,
+        ethAddress: item.ethAddress,
+        payer: payer.publicKey.toBase58(),
+        xnmMint: xnmConfig.mint.toBase58(),
+        xblkMint: xblkConfig.mint.toBase58(),
+        xuniMint: xuniConfig.mint.toBase58(),
+        xnmProgramId: xnmConfig.programId.toBase58(),
+        xblkProgramId: xblkConfig.programId.toBase58(),
+        xuniProgramId: xuniConfig.programId.toBase58(),
+      }, 'IllegalOwner error - account details');
+
+      // Try to fetch and log the actual account states for debugging
+      try {
+        const xnmAta = getAssociatedTokenAddressSync(xnmConfig.mint, new PublicKey(item.recipientAddress), true, xnmConfig.programId);
+        const xblkAta = getAssociatedTokenAddressSync(xblkConfig.mint, new PublicKey(item.recipientAddress), true, xblkConfig.programId);
+        const xuniAta = getAssociatedTokenAddressSync(xuniConfig.mint, new PublicKey(item.recipientAddress), true, xuniConfig.programId);
+
+        const payerXnmAta = getAssociatedTokenAddressSync(xnmConfig.mint, payer.publicKey, false, xnmConfig.programId);
+        const payerXblkAta = getAssociatedTokenAddressSync(xblkConfig.mint, payer.publicKey, false, xblkConfig.programId);
+        const payerXuniAta = getAssociatedTokenAddressSync(xuniConfig.mint, payer.publicKey, false, xuniConfig.programId);
+
+        logger.error({
+          derivedRecipientAtas: {
+            xnm: xnmAta.toBase58(),
+            xblk: xblkAta.toBase58(),
+            xuni: xuniAta.toBase58(),
+          },
+          derivedPayerAtas: {
+            xnm: payerXnmAta.toBase58(),
+            xblk: payerXblkAta.toBase58(),
+            xuni: payerXuniAta.toBase58(),
+          },
+        }, 'IllegalOwner error - derived ATA addresses');
+
+        // Fetch actual account info
+        const [recipientXnmInfo, recipientXblkInfo, recipientXuniInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
+        const [payerXnmInfo, payerXblkInfo, payerXuniInfo] = await connection.getMultipleAccountsInfo([payerXnmAta, payerXblkAta, payerXuniAta]);
+
+        logger.error({
+          recipientAtaStatus: {
+            xnmExists: !!recipientXnmInfo,
+            xnmOwner: recipientXnmInfo?.owner?.toBase58(),
+            xblkExists: !!recipientXblkInfo,
+            xblkOwner: recipientXblkInfo?.owner?.toBase58(),
+            xuniExists: !!recipientXuniInfo,
+            xuniOwner: recipientXuniInfo?.owner?.toBase58(),
+          },
+          payerAtaStatus: {
+            xnmExists: !!payerXnmInfo,
+            xnmOwner: payerXnmInfo?.owner?.toBase58(),
+            xblkExists: !!payerXblkInfo,
+            xblkOwner: payerXblkInfo?.owner?.toBase58(),
+            xuniExists: !!payerXuniInfo,
+            xuniOwner: payerXuniInfo?.owner?.toBase58(),
+          },
+        }, 'IllegalOwner error - actual account states');
+      } catch (debugError) {
+        logger.warn({ debugError: String(debugError) }, 'Failed to fetch account info for debugging');
+      }
+    }
+
     return {
       success: false,
       errorMessage,
