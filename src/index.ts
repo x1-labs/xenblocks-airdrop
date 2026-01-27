@@ -25,6 +25,14 @@ async function main(): Promise<void> {
     logger.debug({ rpcEndpoint: config.rpcEndpoint }, 'RPC endpoint');
     logger.info({ dryRun: config.dryRun }, 'Dry run mode');
 
+    const { x1Addresses, ethAddresses } = config.addressFilter;
+    if (x1Addresses.length > 0 || ethAddresses.length > 0) {
+      logger.info(
+        { x1Addresses, ethAddresses },
+        'Address filter active — only listed addresses will receive airdrops'
+      );
+    }
+
     const connection = getConnection(config);
     const payer = getPayer(config);
 

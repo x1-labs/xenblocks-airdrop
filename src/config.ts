@@ -19,6 +19,11 @@ export interface NativeAirdropConfig {
   minXnmBalance: bigint; // Minimum XNM balance required (in base units)
 }
 
+export interface AddressFilter {
+  x1Addresses: string[];
+  ethAddresses: string[];
+}
+
 export interface Config {
   tokens: TokenConfig[];
   airdropTrackerProgramId: PublicKey;
@@ -31,9 +36,29 @@ export interface Config {
   concurrency: number;
   feeBufferMultiplier: number;
   nativeAirdrop: NativeAirdropConfig;
+  addressFilter: AddressFilter;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
+
+/**
+ * Parse --x1-address and --eth-address flags from process.argv
+ */
+function parseAddressFilter(): AddressFilter {
+  const args = process.argv.slice(2);
+  const x1Addresses: string[] = [];
+  const ethAddresses: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--x1-address' && i + 1 < args.length) {
+      x1Addresses.push(args[++i]);
+    } else if (args[i] === '--eth-address' && i + 1 < args.length) {
+      ethAddresses.push(args[++i]);
+    }
+  }
+
+  return { x1Addresses, ethAddresses };
+}
 
 /**
  * Parse comma-separated token types from environment variable
@@ -62,7 +87,10 @@ function parseTokenTypes(tokenTypesEnv: string): TokenType[] {
 /**
  * Get token configuration for a specific token type
  */
-function getTokenConfig(tokenType: TokenType, defaultProgramId: PublicKey): TokenConfig {
+function getTokenConfig(
+  tokenType: TokenType,
+  defaultProgramId: PublicKey
+): TokenConfig {
   const envPrefix = tokenType.toUpperCase();
   const mintEnvVar = `${envPrefix}_TOKEN_MINT`;
   const decimalsEnvVar = `${envPrefix}_DECIMALS`;
@@ -106,14 +134,18 @@ export function loadConfig(): Config {
   // Token program: 'token' (default) or 'token-2022'
   const defaultTokenProgram = process.env.TOKEN_PROGRAM || 'token-2022';
   const defaultProgramId =
-    defaultTokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    defaultTokenProgram === 'token-2022'
+      ? TOKEN_2022_PROGRAM_ID
+      : TOKEN_PROGRAM_ID;
 
   // Parse token types from env (defaults to 'xnm')
   const tokenTypesEnv = process.env.TOKEN_TYPES || 'xnm';
   const tokenTypes = parseTokenTypes(tokenTypesEnv);
 
   // Build token configs for each requested token type
-  const tokens = tokenTypes.map((type) => getTokenConfig(type, defaultProgramId));
+  const tokens = tokenTypes.map((type) =>
+    getTokenConfig(type, defaultProgramId)
+  );
 
   // Parse minimum fee balance (default 10 native tokens)
   const minFeeBalanceInput = parseFloat(process.env.MIN_FEE_BALANCE || '10');
@@ -135,14 +167,22 @@ export function loadConfig(): Config {
   const nativeAirdropEnabled = process.env.NATIVE_AIRDROP_ENABLED === 'true';
 
   // Native airdrop amount (default 1 XNT = 1e9 lamports)
-  const nativeAirdropAmountInput = parseFloat(process.env.NATIVE_AIRDROP_AMOUNT || '1');
-  const nativeAirdropAmount = BigInt(Math.floor(nativeAirdropAmountInput * 1e9));
+  const nativeAirdropAmountInput = parseFloat(
+    process.env.NATIVE_AIRDROP_AMOUNT || '1'
+  );
+  const nativeAirdropAmount = BigInt(
+    Math.floor(nativeAirdropAmountInput * 1e9)
+  );
 
   // Minimum XNM balance required for native airdrop (default 10000 XNM)
   // Use XNM decimals (default 9) for conversion
   const xnmDecimals = parseInt(process.env.XNM_DECIMALS || '9');
-  const nativeAirdropMinXnmInput = parseFloat(process.env.NATIVE_AIRDROP_MIN_XNM || '10000');
-  const nativeAirdropMinXnm = BigInt(Math.floor(nativeAirdropMinXnmInput * Math.pow(10, xnmDecimals)));
+  const nativeAirdropMinXnmInput = parseFloat(
+    process.env.NATIVE_AIRDROP_MIN_XNM || '10000'
+  );
+  const nativeAirdropMinXnm = BigInt(
+    Math.floor(nativeAirdropMinXnmInput * Math.pow(10, xnmDecimals))
+  );
 
   return {
     tokens,
@@ -164,5 +204,6 @@ export function loadConfig(): Config {
       amount: nativeAirdropAmount,
       minXnmBalance: nativeAirdropMinXnm,
     },
+    addressFilter: parseAddressFilter(),
   };
 }
