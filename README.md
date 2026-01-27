@@ -122,6 +122,26 @@ DRY_RUN=true npm run dev
 DRY_RUN=false npm start
 ```
 
+### Address Filtering
+
+Use `--x1-address` and `--eth-address` flags to restrict the airdrop to specific recipients. When any filter is provided, only miners matching a listed address will receive tokens.
+
+```bash
+# Filter by X1 (Solana) addresses
+npm run dev -- --x1-address 3XXuUFfweXBwFgFfYaejLvZE4cGZiHgKiGfMtdxNzYmv \
+               --x1-address G9ePr6erAomXT1ho5pRU2EgnxCy4NcghZ3ccDTxyq35k
+
+# Filter by ETH addresses
+npm run dev -- --eth-address 0x18C1c90101aA2D04B62a8Fa80fb8D9a574362079
+
+# Combine both (OR logic — matches any listed address)
+npm run dev -- --x1-address 3XXuUFfweXBwFgFfYaejLvZE4cGZiHgKiGfMtdxNzYmv \
+               --eth-address 0x18C1c90101aA2D04B62a8Fa80fb8D9a574362079
+
+# No flags = airdrop to everyone (default behavior)
+npm run dev
+```
+
 ## How It Works
 
 1. **Fetch miners**: Gets miner data from xenblocks.io API with automatic pagination

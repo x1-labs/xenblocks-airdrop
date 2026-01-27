@@ -6,8 +6,16 @@ import {
   PublicKey,
 } from '@solana/web3.js';
 import { Config, TokenConfig } from '../config.js';
-import { Miner, MultiTokenDelta, MultiTokenAirdropResult, OnChainSnapshot } from './types.js';
-import { calculateMultiTokenDeltas, calculateMultiTokenTotals } from './delta.js';
+import {
+  Miner,
+  MultiTokenDelta,
+  MultiTokenAirdropResult,
+  OnChainSnapshot,
+} from './types.js';
+import {
+  calculateMultiTokenDeltas,
+  calculateMultiTokenTotals,
+} from './delta.js';
 import { formatTokenAmount } from '../utils/format.js';
 import {
   getPayerBalance,
@@ -82,7 +90,10 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
     }
 
     allMiners.push(...data.miners);
-    logger.info({ fetched: data.miners.length, total: allMiners.length }, 'Fetched page');
+    logger.info(
+      { fetched: data.miners.length, total: allMiners.length },
+      'Fetched page'
+    );
 
     if (data.miners.length < PAGE_SIZE) {
       // Last page (partial)
@@ -92,17 +103,26 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
     offset += PAGE_SIZE;
   }
 
-  logger.info({ totalFetched: allMiners.length }, 'Finished fetching all miners');
+  logger.info(
+    { totalFetched: allMiners.length },
+    'Finished fetching all miners'
+  );
 
   // First filter: valid address format and has required fields
   const validFormat: Miner[] = [];
   for (const miner of allMiners) {
     if (!miner.solAddress || !miner.xnm) {
-      logger.warn({ ethAddress: miner.account }, 'Skipped miner with missing solAddress or xnm');
+      logger.warn(
+        { ethAddress: miner.account },
+        'Skipped miner with missing solAddress or xnm'
+      );
       continue;
     }
     if (!isValidSolanaAddress(miner.solAddress)) {
-      logger.warn({ wallet: miner.solAddress, ethAddress: miner.account }, 'Skipped invalid Solana address');
+      logger.warn(
+        { wallet: miner.solAddress, ethAddress: miner.account },
+        'Skipped invalid Solana address'
+      );
       continue;
     }
     validFormat.push(miner);
@@ -112,7 +132,10 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
   const validMiners: Miner[] = [];
   for (const miner of validFormat) {
     if (!isOnCurveAddress(miner.solAddress)) {
-      logger.warn({ wallet: miner.solAddress, ethAddress: miner.account }, 'Skipped off-curve address (PDA/program)');
+      logger.warn(
+        { wallet: miner.solAddress, ethAddress: miner.account },
+        'Skipped off-curve address (PDA/program)'
+      );
       continue;
     }
     validMiners.push(miner);
@@ -125,8 +148,11 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
 /**
  * Get token config by type
  */
-function getTokenConfig(config: Config, tokenType: 'xnm' | 'xblk' | 'xuni'): TokenConfig | undefined {
-  return config.tokens.find(t => t.type === tokenType);
+function getTokenConfig(
+  config: Config,
+  tokenType: 'xnm' | 'xblk' | 'xuni'
+): TokenConfig | undefined {
+  return config.tokens.find((t) => t.type === tokenType);
 }
 
 /**
@@ -165,7 +191,9 @@ export async function executeAirdrop(
   const xuniConfig = getTokenConfig(config, 'xuni');
 
   if (!xnmConfig || !xblkConfig || !xuniConfig) {
-    logger.error('XNM, XBLK, and XUNI token configs are required for combined airdrop');
+    logger.error(
+      'XNM, XBLK, and XUNI token configs are required for combined airdrop'
+    );
     throw new Error('Missing token configuration');
   }
 
@@ -176,10 +204,7 @@ export async function executeAirdrop(
     Number(config.minFeeBalance) / LAMPORTS_PER_SOL
   ).toFixed(4);
 
-  logger.info(
-    { balance: nativeBalanceFormatted },
-    'Native balance for fees'
-  );
+  logger.info({ balance: nativeBalanceFormatted }, 'Native balance for fees');
 
   if (BigInt(nativeBalance) < config.minFeeBalance) {
     logger.fatal(
@@ -195,11 +220,33 @@ export async function executeAirdrop(
   }
 
   // Check payer balances for all tokens (each token may use different program)
-  const xnmPayerInfo = await getPayerBalance(connection, payer, xnmConfig, xnmConfig.programId);
-  const xblkPayerInfo = await getPayerBalance(connection, payer, xblkConfig, xblkConfig.programId);
-  const xuniPayerInfo = await getPayerBalance(connection, payer, xuniConfig, xuniConfig.programId);
+  const xnmPayerInfo = await getPayerBalance(
+    connection,
+    payer,
+    xnmConfig,
+    xnmConfig.programId
+  );
+  const xblkPayerInfo = await getPayerBalance(
+    connection,
+    payer,
+    xblkConfig,
+    xblkConfig.programId
+  );
+  const xuniPayerInfo = await getPayerBalance(
+    connection,
+    payer,
+    xuniConfig,
+    xuniConfig.programId
+  );
 
-  logger.info({ xnm: xnmPayerInfo.formatted, xblk: xblkPayerInfo.formatted, xuni: xuniPayerInfo.formatted }, 'Payer token balances');
+  logger.info(
+    {
+      xnm: xnmPayerInfo.formatted,
+      xblk: xblkPayerInfo.formatted,
+      xuni: xuniPayerInfo.formatted,
+    },
+    'Payer token balances'
+  );
 
   // Check if global state is initialized
   const globalState = await getGlobalState(
@@ -227,8 +274,31 @@ export async function executeAirdrop(
   logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
 
   // Fetch miners from API once
-  const miners = await fetchMiners(config.apiEndpoint);
-  logger.info({ totalMiners: miners.length }, 'Total miners loaded');
+  const allMiners = await fetchMiners(config.apiEndpoint);
+  logger.info({ totalMiners: allMiners.length }, 'Total miners loaded');
+
+  // Apply address filter if specified
+  const { x1Addresses, ethAddresses } = config.addressFilter;
+  const hasFilter = x1Addresses.length > 0 || ethAddresses.length > 0;
+  let miners: Miner[];
+
+  if (hasFilter) {
+    const x1Set = new Set(x1Addresses);
+    const ethSet = new Set(ethAddresses.map((a) => a.toLowerCase()));
+    miners = allMiners.filter(
+      (m) => x1Set.has(m.solAddress) || ethSet.has(m.account.toLowerCase())
+    );
+    logger.info(
+      {
+        x1Addresses: x1Addresses.length,
+        ethAddresses: ethAddresses.length,
+        matched: miners.length,
+      },
+      'Address filter applied'
+    );
+  } else {
+    miners = allMiners;
+  }
 
   // Fetch on-chain snapshots once (for both tokens)
   logger.info('Fetching on-chain snapshots...');
@@ -241,23 +311,37 @@ export async function executeAirdrop(
     config.airdropTrackerProgramId,
     minerData
   );
-  logger.info({ existingRecords: snapshots.size }, 'Found existing on-chain records');
+  logger.info(
+    { existingRecords: snapshots.size },
+    'Found existing on-chain records'
+  );
 
   // Calculate multi-token deltas (including native airdrop eligibility)
-  const deltas = calculateMultiTokenDeltas(miners, snapshots, config.nativeAirdrop);
-  const { totalXnm, totalXblk, totalXuni, totalNative } = calculateMultiTokenTotals(deltas);
+  const deltas = calculateMultiTokenDeltas(
+    miners,
+    snapshots,
+    config.nativeAirdrop
+  );
+  const { totalXnm, totalXblk, totalXuni, totalNative } =
+    calculateMultiTokenTotals(deltas);
 
   logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
-  logger.info({
-    xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
-    xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
-    xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
-    nativeNeeded: formatTokenAmount(totalNative, 9),
-  }, 'Total tokens needed');
+  logger.info(
+    {
+      xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
+      xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
+      xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
+      nativeNeeded: formatTokenAmount(totalNative, 9),
+    },
+    'Total tokens needed'
+  );
 
   // Check balances
   if (totalXnm > xnmPayerInfo.balance) {
-    const shortfall = formatTokenAmount(totalXnm - xnmPayerInfo.balance, xnmConfig.decimals);
+    const shortfall = formatTokenAmount(
+      totalXnm - xnmPayerInfo.balance,
+      xnmConfig.decimals
+    );
     logger.warn({ shortfall, token: 'XNM' }, 'Insufficient XNM balance');
     if (!config.dryRun) {
       logger.error('Cannot proceed with insufficient XNM balance');
@@ -266,7 +350,10 @@ export async function executeAirdrop(
   }
 
   if (totalXblk > xblkPayerInfo.balance) {
-    const shortfall = formatTokenAmount(totalXblk - xblkPayerInfo.balance, xblkConfig.decimals);
+    const shortfall = formatTokenAmount(
+      totalXblk - xblkPayerInfo.balance,
+      xblkConfig.decimals
+    );
     logger.warn({ shortfall, token: 'XBLK' }, 'Insufficient XBLK balance');
     if (!config.dryRun) {
       logger.error('Cannot proceed with insufficient XBLK balance');
@@ -275,7 +362,10 @@ export async function executeAirdrop(
   }
 
   if (totalXuni > xuniPayerInfo.balance) {
-    const shortfall = formatTokenAmount(totalXuni - xuniPayerInfo.balance, xuniConfig.decimals);
+    const shortfall = formatTokenAmount(
+      totalXuni - xuniPayerInfo.balance,
+      xuniConfig.decimals
+    );
     logger.warn({ shortfall, token: 'XUNI' }, 'Insufficient XUNI balance');
     if (!config.dryRun) {
       logger.error('Cannot proceed with insufficient XUNI balance');
@@ -287,8 +377,14 @@ export async function executeAirdrop(
   if (config.nativeAirdrop.enabled && totalNative > 0n) {
     const totalNativeNeeded = totalNative + config.minFeeBalance;
     if (BigInt(nativeBalance) < totalNativeNeeded) {
-      const shortfall = formatTokenAmount(totalNativeNeeded - BigInt(nativeBalance), 9);
-      logger.warn({ shortfall, token: 'XNT (native)' }, 'Insufficient native balance for airdrops');
+      const shortfall = formatTokenAmount(
+        totalNativeNeeded - BigInt(nativeBalance),
+        9
+      );
+      logger.warn(
+        { shortfall, token: 'XNT (native)' },
+        'Insufficient native balance for airdrops'
+      );
       if (!config.dryRun) {
         logger.error('Cannot proceed with insufficient native balance');
         return;
@@ -297,7 +393,10 @@ export async function executeAirdrop(
   }
 
   // Process airdrops
-  logger.info({ recipients: deltas.length, concurrency: config.concurrency }, 'Starting combined airdrop...');
+  logger.info(
+    { recipients: deltas.length, concurrency: config.concurrency },
+    'Starting combined airdrop...'
+  );
 
   const results = await processMultiTokenAirdrops(
     connection,
@@ -340,14 +439,17 @@ export async function executeAirdrop(
   }
 
   // Summary
-  logger.info({
-    successful: successCount,
-    failed: results.length - successCount,
-    xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
-    xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
-    xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
-    nativeSent: formatTokenAmount(totalNativeSent, 9),
-  }, 'Airdrop complete');
+  logger.info(
+    {
+      successful: successCount,
+      failed: results.length - successCount,
+      xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
+      xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
+      xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
+      nativeSent: formatTokenAmount(totalNativeSent, 9),
+    },
+    'Airdrop complete'
+  );
 }
 
 /**
@@ -417,22 +519,29 @@ async function processSingleRecipient(
 
   if (result.success) {
     logger.trace(
-      { tx: result.txSignature, simulatedCU: result.simulatedCU, limitCU: result.computeUnitLimit },
+      {
+        tx: result.txSignature,
+        simulatedCU: result.simulatedCU,
+        limitCU: result.computeUnitLimit,
+      },
       'Transaction confirmed'
     );
-    logger.debug({
-      wallet: delta.walletAddress,
-      xnmApi: delta.xnmApiAmount,
-      xnmPrev: formatTokenAmount(delta.xnmPrevious, xnmConfig.decimals),
-      xnmDelta: xnmFormatted,
-      xblkApi: delta.xblkApiAmount,
-      xblkPrev: formatTokenAmount(delta.xblkPrevious, xblkConfig.decimals),
-      xblkDelta: xblkFormatted,
-      xuniApi: delta.xuniApiAmount,
-      xuniPrev: formatTokenAmount(delta.xuniPrevious, xuniConfig.decimals),
-      xuniDelta: xuniFormatted,
-      ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
-    }, 'Transfer successful');
+    logger.debug(
+      {
+        wallet: delta.walletAddress,
+        xnmApi: delta.xnmApiAmount,
+        xnmPrev: formatTokenAmount(delta.xnmPrevious, xnmConfig.decimals),
+        xnmDelta: xnmFormatted,
+        xblkApi: delta.xblkApiAmount,
+        xblkPrev: formatTokenAmount(delta.xblkPrevious, xblkConfig.decimals),
+        xblkDelta: xblkFormatted,
+        xuniApi: delta.xuniApiAmount,
+        xuniPrev: formatTokenAmount(delta.xuniPrevious, xuniConfig.decimals),
+        xuniDelta: xuniFormatted,
+        ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
+      },
+      'Transfer successful'
+    );
 
     return {
       walletAddress: delta.walletAddress,
@@ -445,15 +554,18 @@ async function processSingleRecipient(
       status: 'success',
     };
   } else {
-    logger.error({
-      wallet: delta.walletAddress,
-      ethAddress: delta.ethAddress,
-      xnmDelta: xnmFormatted,
-      xblkDelta: xblkFormatted,
-      xuniDelta: xuniFormatted,
-      ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
-      error: result.errorMessage,
-    }, 'Transfer failed');
+    logger.error(
+      {
+        wallet: delta.walletAddress,
+        ethAddress: delta.ethAddress,
+        xnmDelta: xnmFormatted,
+        xblkDelta: xblkFormatted,
+        xuniDelta: xuniFormatted,
+        ...(delta.nativeAmount > 0n && { nativeAmount: nativeFormatted }),
+        error: result.errorMessage,
+      },
+      'Transfer failed'
+    );
 
     return {
       walletAddress: delta.walletAddress,
@@ -492,13 +604,18 @@ async function processMultiTokenAirdrops(
   if (config.dryRun) {
     for (let i = 0; i < deltas.length; i++) {
       const delta = deltas[i];
-      logger.debug({
-        wallet: delta.walletAddress,
-        xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
-        xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
-        xuniDelta: formatTokenAmount(delta.xuniDelta, xuniConfig.decimals),
-        ...(delta.nativeAmount > 0n && { nativeAmount: formatTokenAmount(delta.nativeAmount, 9) }),
-      }, '[DRY RUN] Would send tokens');
+      logger.debug(
+        {
+          wallet: delta.walletAddress,
+          xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
+          xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
+          xuniDelta: formatTokenAmount(delta.xuniDelta, xuniConfig.decimals),
+          ...(delta.nativeAmount > 0n && {
+            nativeAmount: formatTokenAmount(delta.nativeAmount, 9),
+          }),
+        },
+        '[DRY RUN] Would send tokens'
+      );
 
       results.push({
         walletAddress: delta.walletAddress,
@@ -514,7 +631,14 @@ async function processMultiTokenAirdrops(
 
       if ((i + 1) % 100 === 0 || i === deltas.length - 1) {
         const progress = (((i + 1) / deltas.length) * 100).toFixed(1);
-        logger.info({ progress: `${progress}%`, processed: `${i + 1}/${deltas.length}`, success: successCount }, 'Progress');
+        logger.info(
+          {
+            progress: `${progress}%`,
+            processed: `${i + 1}/${deltas.length}`,
+            success: successCount,
+          },
+          'Progress'
+        );
       }
     }
     return results;
@@ -523,19 +647,28 @@ async function processMultiTokenAirdrops(
   // Process with concurrency (one recipient per transaction)
   for (let i = 0; i < deltas.length; i += concurrency) {
     const batch = deltas.slice(i, i + concurrency);
-    const progress = ((Math.min(i + concurrency, deltas.length) / deltas.length) * 100).toFixed(1);
+    const progress = (
+      (Math.min(i + concurrency, deltas.length) / deltas.length) *
+      100
+    ).toFixed(1);
 
-    logger.info({
-      progress: `${progress}%`,
-      processed: `${Math.min(i + concurrency, deltas.length)}/${deltas.length}`,
-      success: successCount,
-      failed: failCount,
-      concurrent: batch.length,
-    }, 'Progress');
+    logger.info(
+      {
+        progress: `${progress}%`,
+        processed: `${Math.min(i + concurrency, deltas.length)}/${deltas.length}`,
+        success: successCount,
+        failed: failCount,
+        concurrent: batch.length,
+      },
+      'Progress'
+    );
 
     // Process batch concurrently
     const batchPromises = batch.map((delta) => {
-      const snapshotKey = makeSnapshotKey(delta.walletAddress, delta.ethAddress);
+      const snapshotKey = makeSnapshotKey(
+        delta.walletAddress,
+        delta.ethAddress
+      );
       const hasExistingRecord = snapshots.has(snapshotKey);
 
       return processSingleRecipient(
@@ -563,12 +696,15 @@ async function processMultiTokenAirdrops(
   }
 
   // Final progress
-  logger.info({
-    progress: '100%',
-    processed: `${deltas.length}/${deltas.length}`,
-    success: successCount,
-    failed: failCount,
-  }, 'Processing complete');
+  logger.info(
+    {
+      progress: '100%',
+      processed: `${deltas.length}/${deltas.length}`,
+      success: successCount,
+      failed: failCount,
+    },
+    'Processing complete'
+  );
 
   return results;
 }
