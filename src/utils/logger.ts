@@ -26,6 +26,13 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 export const logger = pino({
   level: getLogLevel(),
+  base: undefined, // strip pid and hostname
+  timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
+  formatters: {
+    level(label) {
+      return { level: label };
+    },
+  },
   serializers: {
     err: pino.stdSerializers.err,
     error: pino.stdSerializers.err,
