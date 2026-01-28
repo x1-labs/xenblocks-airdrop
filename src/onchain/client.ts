@@ -9,6 +9,7 @@ import {
 } from '@solana/web3.js';
 import {
   deriveAirdropRecordPDA,
+  deriveAirdropRecordPDALegacy,
   deriveGlobalStatePDA,
   deriveAirdropRunPDA,
   ethAddressToBytes,
@@ -18,9 +19,12 @@ import {
   AIRDROP_RECORD_LEGACY_OFFSETS,
   AIRDROP_RECORD_SIZE,
   AIRDROP_RECORD_LEGACY_SIZE,
+  AIRDROP_RECORD_V2_OFFSETS,
+  AIRDROP_RECORD_V2_SIZE,
   GLOBAL_STATE_OFFSETS,
   AIRDROP_RUN_OFFSETS,
   AirdropRecord,
+  AirdropRecordV2,
   GlobalState,
   OnChainAirdropRun,
 } from './types.js';
@@ -142,6 +146,59 @@ export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
   };
 }
 
+/**
+ * Deserialize an AirdropRecordV2 from account data
+ * V2 records have no sol_wallet field (ETH-only PDA)
+ */
+export function deserializeAirdropRecordV2(data: Buffer): AirdropRecordV2 {
+  const ethAddress = Array.from(
+    data.slice(
+      AIRDROP_RECORD_V2_OFFSETS.ETH_ADDRESS,
+      AIRDROP_RECORD_V2_OFFSETS.XNM_AIRDROPPED
+    )
+  );
+
+  const xnmAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_V2_OFFSETS.XNM_AIRDROPPED
+  );
+
+  const xblkAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_V2_OFFSETS.XBLK_AIRDROPPED
+  );
+
+  const xuniAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_V2_OFFSETS.XUNI_AIRDROPPED
+  );
+
+  const nativeAirdropped = data.readBigUInt64LE(
+    AIRDROP_RECORD_V2_OFFSETS.NATIVE_AIRDROPPED
+  );
+
+  const reserved: bigint[] = [];
+  for (let i = 0; i < 4; i++) {
+    reserved.push(
+      data.readBigUInt64LE(AIRDROP_RECORD_V2_OFFSETS.RESERVED + i * 8)
+    );
+  }
+
+  const lastUpdated = data.readBigInt64LE(
+    AIRDROP_RECORD_V2_OFFSETS.LAST_UPDATED
+  );
+
+  const bump = data.readUInt8(AIRDROP_RECORD_V2_OFFSETS.BUMP);
+
+  return {
+    ethAddress,
+    xnmAirdropped,
+    xblkAirdropped,
+    xuniAirdropped,
+    nativeAirdropped,
+    reserved,
+    lastUpdated,
+    bump,
+  };
+}
+
 // ============================================================================
 // Read Functions
 // ============================================================================
@@ -182,23 +239,22 @@ export async function getAirdropRun(
 }
 
 /**
- * Fetch the on-chain airdrop amounts for a single wallet
+ * Fetch the on-chain airdrop amounts for a single wallet (V2, ETH-only PDA)
  * Returns all three token amounts
  */
 export async function getOnChainAmounts(
   connection: Connection,
   programId: PublicKey,
-  solWallet: PublicKey,
   ethAddress: string
 ): Promise<{ xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint } | null> {
-  const [pda] = deriveAirdropRecordPDA(programId, solWallet, ethAddress);
+  const [pda] = deriveAirdropRecordPDA(programId, ethAddress);
   const accountInfo = await connection.getAccountInfo(pda);
 
   if (!accountInfo) {
     return null;
   }
 
-  const record = deserializeAirdropRecord(accountInfo.data);
+  const record = deserializeAirdropRecordV2(accountInfo.data);
   return {
     xnmAirdropped: record.xnmAirdropped,
     xblkAirdropped: record.xblkAirdropped,
@@ -207,48 +263,42 @@ export async function getOnChainAmounts(
 }
 
 /**
- * Create a composite key for the snapshot map (solAddress:ethAddress)
+ * Create a key for the snapshot map using ETH address
  */
-export function makeSnapshotKey(solAddress: string, ethAddress: string): string {
-  return `${solAddress}:${ethAddress}`;
+export function makeSnapshotKey(ethAddress: string): string {
+  return ethAddress;
 }
 
 /**
  * Fetch on-chain snapshots for all miners in batch (all tokens)
  * Uses getProgramAccounts for efficiency - single RPC call instead of batched fetches
- * Returns a Map of "solAddress:ethAddress" -> { xnmAirdropped, xblkAirdropped, xuniAirdropped, nativeAirdropped }
+ * Handles V2 (123 bytes), current (155 bytes), and legacy (99 bytes) account schemas
+ * V2 records take priority over legacy records for the same ETH address
+ * Returns a Map of ethAddress -> { xnmAirdropped, xblkAirdropped, xuniAirdropped, nativeAirdropped }
  */
 export async function fetchAllMultiTokenSnapshots(
   connection: Connection,
-  programId: PublicKey,
-  _miners: { solAddress: string; ethAddress: string }[]
+  programId: PublicKey
 ): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>> {
   const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>();
 
   // Fetch all airdrop record accounts in one call
   const accounts = await connection.getProgramAccounts(programId, {
-    filters: [
-      // Filter by account size to only get AirdropRecord accounts
-      // Support both legacy (99 bytes) and new (155 bytes) schemas
-      // We'll fetch all and filter in code since we need both sizes
-    ],
+    filters: [],
   });
 
+  // First pass: process V2 records (123 bytes) which take priority
   for (const { account } of accounts) {
-    // Skip accounts that aren't AirdropRecord (check size)
-    const dataLen = account.data.length;
-    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
+    if (account.data.length !== AIRDROP_RECORD_V2_SIZE) {
       continue;
     }
 
     try {
-      const record = deserializeAirdropRecord(account.data);
-      // Convert ethAddress bytes back to string
+      const record = deserializeAirdropRecordV2(account.data);
       const ethAddressBytes = record.ethAddress.filter(b => b !== 0);
       const ethAddress = String.fromCharCode(...ethAddressBytes);
-      const solAddress = record.solWallet.toBase58();
 
-      const key = makeSnapshotKey(solAddress, ethAddress);
+      const key = makeSnapshotKey(ethAddress);
       snapshots.set(key, {
         xnmAirdropped: record.xnmAirdropped,
         xblkAirdropped: record.xblkAirdropped,
@@ -260,7 +310,63 @@ export async function fetchAllMultiTokenSnapshots(
     }
   }
 
+  // Second pass: process legacy records (155 and 99 bytes) only if no V2 record exists
+  for (const { account } of accounts) {
+    const dataLen = account.data.length;
+    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
+      continue;
+    }
+
+    try {
+      const record = deserializeAirdropRecord(account.data);
+      const ethAddressBytes = record.ethAddress.filter(b => b !== 0);
+      const ethAddress = String.fromCharCode(...ethAddressBytes);
+
+      const key = makeSnapshotKey(ethAddress);
+      if (!snapshots.has(key)) {
+        snapshots.set(key, {
+          xnmAirdropped: record.xnmAirdropped,
+          xblkAirdropped: record.xblkAirdropped,
+          xuniAirdropped: record.xuniAirdropped,
+          nativeAirdropped: record.nativeAirdropped,
+        });
+      }
+    } catch {
+      // Skip malformed accounts
+    }
+  }
+
   return snapshots;
+}
+
+/**
+ * Fetch all legacy airdrop records (155 or 99 byte accounts)
+ * Returns deserialized AirdropRecord array for migration purposes
+ */
+export async function fetchAllLegacyRecords(
+  connection: Connection,
+  programId: PublicKey
+): Promise<AirdropRecord[]> {
+  const accounts = await connection.getProgramAccounts(programId, {
+    filters: [],
+  });
+
+  const records: AirdropRecord[] = [];
+
+  for (const { account } of accounts) {
+    const dataLen = account.data.length;
+    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
+      continue;
+    }
+
+    try {
+      records.push(deserializeAirdropRecord(account.data));
+    } catch {
+      // Skip malformed accounts
+    }
+  }
+
+  return records;
 }
 
 // ============================================================================
@@ -354,30 +460,24 @@ export function createUpdateRunTotalsInstruction(
 }
 
 /**
- * Create instruction to initialize a new airdrop record
+ * Create instruction to initialize a new V2 airdrop record (ETH-only PDA)
  */
 export function createInitializeRecordInstruction(
   programId: PublicKey,
   authority: PublicKey,
-  solWallet: PublicKey,
   ethAddress: string
 ): TransactionInstruction {
-  const [airdropRecord] = deriveAirdropRecordPDA(
-    programId,
-    solWallet,
-    ethAddress
-  );
+  const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
-  // Anchor instruction discriminator for "initialize_record"
-  const discriminator = Buffer.from([92, 106, 172, 44, 148, 3, 42, 251]);
+  // Placeholder discriminator for "initialize_record_v2" (will be filled after anchor build)
+  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
 
   const data = Buffer.concat([discriminator, Buffer.from(ethBytes)]);
 
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: solWallet, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
@@ -387,27 +487,22 @@ export function createInitializeRecordInstruction(
 }
 
 /**
- * Create instruction to update an existing airdrop record
+ * Create instruction to update an existing V2 airdrop record (ETH-only PDA)
  * Updates all three token amounts plus native amount at once
  */
 export function createUpdateRecordInstruction(
   programId: PublicKey,
   authority: PublicKey,
-  solWallet: PublicKey,
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
   xuniAmount: bigint,
   nativeAmount: bigint = 0n
 ): TransactionInstruction {
-  const [airdropRecord] = deriveAirdropRecordPDA(
-    programId,
-    solWallet,
-    ethAddress
-  );
+  const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
 
-  // Anchor instruction discriminator for "update_record"
-  const discriminator = Buffer.from([54, 194, 108, 162, 199, 12, 5, 60]);
+  // Placeholder discriminator for "update_record_v2" (will be filled after anchor build)
+  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
 
   // xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
   const data = Buffer.alloc(discriminator.length + 8 + 8 + 8 + 8);
@@ -428,28 +523,23 @@ export function createUpdateRecordInstruction(
 }
 
 /**
- * Create instruction to initialize and update in one call
+ * Create instruction to initialize and update V2 record in one call (ETH-only PDA)
  * Sets all three token amounts plus native amount at once
  */
 export function createInitializeAndUpdateInstruction(
   programId: PublicKey,
   authority: PublicKey,
-  solWallet: PublicKey,
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
   xuniAmount: bigint,
   nativeAmount: bigint = 0n
 ): TransactionInstruction {
-  const [airdropRecord] = deriveAirdropRecordPDA(
-    programId,
-    solWallet,
-    ethAddress
-  );
+  const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
-  // Anchor instruction discriminator for "initialize_and_update"
-  const discriminator = Buffer.from([110, 48, 174, 47, 71, 105, 223, 39]);
+  // Placeholder discriminator for "initialize_and_update_v2" (will be filled after anchor build)
+  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
 
   // eth_address (42 bytes) + xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
   const xnmBuffer = Buffer.alloc(8);
@@ -476,12 +566,35 @@ export function createInitializeAndUpdateInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: solWallet, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     programId,
     data,
+  });
+}
+
+/**
+ * Create instruction to migrate a legacy record to a V2 record
+ */
+export function createMigrateRecordInstruction(
+  programId: PublicKey,
+  authority: PublicKey,
+  oldRecord: PublicKey,
+  newRecord: PublicKey
+): TransactionInstruction {
+  // Placeholder discriminator for "migrate_record" (will be filled after anchor build)
+  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: oldRecord, isSigner: false, isWritable: true },
+      { pubkey: newRecord, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId,
+    data: discriminator,
   });
 }
 
@@ -578,7 +691,7 @@ export async function updateOnChainRunTotals(
 }
 
 /**
- * Update on-chain record after a successful airdrop
+ * Update on-chain V2 record after a successful airdrop
  * Creates the record if it doesn't exist
  * Updates all three token amounts plus native amount at once
  */
@@ -586,14 +699,13 @@ export async function updateOnChainRecord(
   connection: Connection,
   programId: PublicKey,
   payer: Keypair,
-  solWallet: PublicKey,
   ethAddress: string,
   xnmAmount: bigint,
   xblkAmount: bigint,
   xuniAmount: bigint,
   nativeAmount: bigint = 0n
 ): Promise<string> {
-  const [pda] = deriveAirdropRecordPDA(programId, solWallet, ethAddress);
+  const [pda] = deriveAirdropRecordPDA(programId, ethAddress);
   const accountInfo = await connection.getAccountInfo(pda);
 
   const transaction = new Transaction();
@@ -604,7 +716,6 @@ export async function updateOnChainRecord(
       createUpdateRecordInstruction(
         programId,
         payer.publicKey,
-        solWallet,
         ethAddress,
         xnmAmount,
         xblkAmount,
@@ -618,7 +729,6 @@ export async function updateOnChainRecord(
       createInitializeAndUpdateInstruction(
         programId,
         payer.publicKey,
-        solWallet,
         ethAddress,
         xnmAmount,
         xblkAmount,
