@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { getConnection, getPayer } from './solana/connection.js';
-import { executeAirdrop } from './airdrop/executor.js';
+import { executeAirdrop, executeMigration } from './airdrop/executor.js';
 import logger from './utils/logger.js';
 
 async function main(): Promise<void> {
@@ -38,9 +38,16 @@ async function main(): Promise<void> {
 
     logger.info({ payer: payer.publicKey.toString() }, 'Payer wallet');
 
-    await executeAirdrop(connection, payer, config);
+    const isMigrate = process.argv.includes('--migrate');
+
+    if (isMigrate) {
+      logger.info('Migration mode enabled');
+      await executeMigration(connection, payer, config);
+    } else {
+      await executeAirdrop(connection, payer, config);
+    }
   } catch (error) {
-    logger.fatal({ error }, 'Airdrop failed');
+    logger.fatal({ error }, 'Failed');
     process.exit(1);
   }
 }
