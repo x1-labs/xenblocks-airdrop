@@ -470,8 +470,8 @@ export function createInitializeRecordInstruction(
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
-  // Placeholder discriminator for "initialize_record_v2" (will be filled after anchor build)
-  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
+  // Anchor discriminator for "initialize_record_v2"
+  const discriminator = Buffer.from([9, 168, 75, 31, 120, 164, 180, 40]);
 
   const data = Buffer.concat([discriminator, Buffer.from(ethBytes)]);
 
@@ -501,8 +501,8 @@ export function createUpdateRecordInstruction(
 ): TransactionInstruction {
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
 
-  // Placeholder discriminator for "update_record_v2" (will be filled after anchor build)
-  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
+  // Anchor discriminator for "update_record_v2"
+  const discriminator = Buffer.from([128, 80, 71, 187, 243, 5, 79, 128]);
 
   // xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
   const data = Buffer.alloc(discriminator.length + 8 + 8 + 8 + 8);
@@ -538,8 +538,8 @@ export function createInitializeAndUpdateInstruction(
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
-  // Placeholder discriminator for "initialize_and_update_v2" (will be filled after anchor build)
-  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
+  // Anchor discriminator for "initialize_and_update_v2"
+  const discriminator = Buffer.from([11, 96, 49, 240, 7, 7, 185, 214]);
 
   // eth_address (42 bytes) + xnm_amount (8 bytes) + xblk_amount (8 bytes) + xuni_amount (8 bytes) + native_amount (8 bytes)
   const xnmBuffer = Buffer.alloc(8);
@@ -583,8 +583,8 @@ export function createMigrateRecordInstruction(
   oldRecord: PublicKey,
   newRecord: PublicKey
 ): TransactionInstruction {
-  // Placeholder discriminator for "migrate_record" (will be filled after anchor build)
-  const discriminator = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]);
+  // Anchor discriminator for "migrate_record"
+  const discriminator = Buffer.from([11, 152, 11, 75, 10, 158, 213, 126]);
 
   return new TransactionInstruction({
     keys: [
