@@ -9,7 +9,6 @@ import {
 } from '@solana/web3.js';
 import {
   deriveAirdropRecordPDA,
-  deriveAirdropRecordPDALegacy,
   deriveGlobalStatePDA,
   deriveAirdropRunPDA,
   ethAddressToBytes,
