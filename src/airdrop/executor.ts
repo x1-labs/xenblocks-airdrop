@@ -629,6 +629,7 @@ async function processMultiTokenAirdrops(
       logger.debug(
         {
           wallet: delta.walletAddress,
+          eth: delta.ethAddress,
           xnmDelta: formatTokenAmount(delta.xnmDelta, xnmConfig.decimals),
           xblkDelta: formatTokenAmount(delta.xblkDelta, xblkConfig.decimals),
           xuniDelta: formatTokenAmount(delta.xuniDelta, xuniConfig.decimals),
@@ -753,53 +754,78 @@ export async function executeMigration(
   let failCount = 0;
   let skipCount = 0;
 
-  for (let i = 0; i < legacyRecords.length; i++) {
-    const record = legacyRecords[i];
-    const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
+  const { concurrency } = config;
 
-    // Check if V2 record already exists
-    const [newPda] = deriveAirdropRecordPDA(
-      config.airdropTrackerProgramId,
-      ethAddress
-    );
-    const existingV2 = await connection.getAccountInfo(newPda);
-    if (existingV2) {
-      logger.debug({ ethAddress }, 'V2 record already exists, skipping');
-      skipCount++;
-      continue;
-    }
+  for (let i = 0; i < legacyRecords.length; i += concurrency) {
+    const batch = legacyRecords.slice(i, i + concurrency);
+    const progress = (
+      (Math.min(i + concurrency, legacyRecords.length) / legacyRecords.length) *
+      100
+    ).toFixed(1);
 
-    // Derive old PDA
-    const [oldPda] = deriveAirdropRecordPDALegacy(
-      config.airdropTrackerProgramId,
-      record.solWallet,
-      ethAddress
+    logger.info(
+      {
+        progress: `${progress}%`,
+        processed: `${Math.min(i + concurrency, legacyRecords.length)}/${legacyRecords.length}`,
+        success: successCount,
+        failed: failCount,
+        skipped: skipCount,
+        concurrent: batch.length,
+      },
+      'Migration progress'
     );
 
-    try {
-      const canonicalEthBytes = ethAddressToBytes(ethAddress);
-      const instruction = createMigrateRecordInstruction(
+    const batchPromises = batch.map(async (record) => {
+      const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
+
+      // Check if V2 record already exists
+      const [newPda] = deriveAirdropRecordPDA(
         config.airdropTrackerProgramId,
-        payer.publicKey,
-        oldPda,
-        newPda,
-        canonicalEthBytes
+        ethAddress
       );
-      const transaction = new Transaction().add(instruction);
-      await sendAndConfirmTransaction(connection, transaction, [payer], {
-        commitment: 'confirmed',
-      });
-      successCount++;
-      logger.debug(
-        { ethAddress, progress: `${i + 1}/${legacyRecords.length}` },
-        'Migrated record'
+      const existingV2 = await connection.getAccountInfo(newPda);
+      if (existingV2) {
+        logger.debug({ ethAddress }, 'V2 record already exists, skipping');
+        return 'skip' as const;
+      }
+
+      // Derive old PDA
+      const [oldPda] = deriveAirdropRecordPDALegacy(
+        config.airdropTrackerProgramId,
+        record.solWallet,
+        ethAddress
       );
-    } catch (error) {
-      failCount++;
-      logger.error(
-        { ethAddress, error: String(error) },
-        'Failed to migrate record'
-      );
+
+      try {
+        const canonicalEthBytes = ethAddressToBytes(ethAddress);
+        const instruction = createMigrateRecordInstruction(
+          config.airdropTrackerProgramId,
+          payer.publicKey,
+          oldPda,
+          newPda,
+          canonicalEthBytes
+        );
+        const transaction = new Transaction().add(instruction);
+        await sendAndConfirmTransaction(connection, transaction, [payer], {
+          commitment: 'confirmed',
+        });
+        logger.debug({ ethAddress }, 'Migrated record');
+        return 'success' as const;
+      } catch (error) {
+        logger.error(
+          { ethAddress, error: String(error) },
+          'Failed to migrate record'
+        );
+        return 'fail' as const;
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+
+    for (const result of batchResults) {
+      if (result === 'success') successCount++;
+      else if (result === 'fail') failCount++;
+      else skipCount++;
     }
   }
 
