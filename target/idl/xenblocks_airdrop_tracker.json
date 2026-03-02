@@ -36,6 +36,51 @@
       "args": []
     },
     {
+      "name": "close_record_v2",
+      "docs": [
+        "Close a V2 airdrop record and reclaim rent (admin only)"
+      ],
+      "discriminator": [
+        14,
+        65,
+        4,
+        216,
+        112,
+        23,
+        57,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "create_run",
       "docs": [
         "Create a new airdrop run"
@@ -153,6 +198,81 @@
       ]
     },
     {
+      "name": "initialize_and_update_v2",
+      "docs": [
+        "Initialize a V2 record and immediately set amounts (for new wallets during airdrop)"
+      ],
+      "discriminator": [
+        11,
+        96,
+        49,
+        240,
+        7,
+        7,
+        185,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "eth_address",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        },
+        {
+          "name": "xnm_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xblk_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initialize_record",
       "docs": [
         "Initialize a new airdrop record for a wallet/eth pair"
@@ -175,6 +295,65 @@
         },
         {
           "name": "sol_wallet"
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "eth_address",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_record_v2",
+      "docs": [
+        "Initialize a new V2 airdrop record keyed by ETH address only"
+      ],
+      "discriminator": [
+        9,
+        168,
+        75,
+        31,
+        120,
+        164,
+        180,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "airdrop_record",
@@ -244,6 +423,72 @@
       "args": []
     },
     {
+      "name": "migrate_record",
+      "docs": [
+        "Migrate a V1 airdrop record to V2 (ETH-only PDA)",
+        "Copies all fields from old_record to new_record, then closes old_record.",
+        "Accepts canonical (lowercased) ETH address for V2 PDA derivation so that",
+        "mixed-case V1 records produce the same PDA the client expects."
+      ],
+      "discriminator": [
+        11,
+        152,
+        11,
+        75,
+        10,
+        158,
+        213,
+        126
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "old_record",
+          "writable": true
+        },
+        {
+          "name": "new_record",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "canonical_eth",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "update_record",
       "docs": [
         "Update an existing airdrop record after a successful transfer",
@@ -264,6 +509,68 @@
           "name": "authority",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "airdrop_record",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "xnm_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xblk_amount",
+          "type": "u64"
+        },
+        {
+          "name": "xuni_amount",
+          "type": "u64"
+        },
+        {
+          "name": "native_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_record_v2",
+      "docs": [
+        "Update an existing V2 airdrop record after a successful transfer"
+      ],
+      "discriminator": [
+        128,
+        80,
+        71,
+        187,
+        243,
+        5,
+        79,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "airdrop_record",
@@ -376,6 +683,19 @@
       ]
     },
     {
+      "name": "AirdropRecordV2",
+      "discriminator": [
+        246,
+        23,
+        150,
+        93,
+        132,
+        249,
+        155,
+        7
+      ]
+    },
+    {
       "name": "AirdropRun",
       "discriminator": [
         174,
@@ -412,6 +732,11 @@
       "code": 6001,
       "name": "Unauthorized",
       "msg": "Unauthorized: signer is not the authority"
+    },
+    {
+      "code": 6002,
+      "name": "EthAddressMismatch",
+      "msg": "Canonical ETH address does not match lowercased old record"
     }
   ],
   "types": [
@@ -427,6 +752,80 @@
             ],
             "type": "pubkey"
           },
+          {
+            "name": "eth_address",
+            "docs": [
+              "The associated ETH address (as UTF-8 bytes, e.g., \"0x1234...\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                42
+              ]
+            }
+          },
+          {
+            "name": "xnm_airdropped",
+            "docs": [
+              "Cumulative XNM amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xblk_airdropped",
+            "docs": [
+              "Cumulative XBLK amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xuni_airdropped",
+            "docs": [
+              "Cumulative XUNI amount airdropped (in token base units, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "native_airdropped",
+            "docs": [
+              "Cumulative native token (XNT) airdropped (in lamports, 9 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Reserved space for future use (8 bytes each * 4 = 32 bytes)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                4
+              ]
+            }
+          },
+          {
+            "name": "last_updated",
+            "docs": [
+              "Unix timestamp of last update"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed for derivation"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AirdropRecordV2",
+      "type": {
+        "kind": "struct",
+        "fields": [
           {
             "name": "eth_address",
             "docs": [

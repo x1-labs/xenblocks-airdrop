@@ -8,6 +8,12 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 name = "xenblocks_airdrop_tracker"
 
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))',
+]
+
 [features]
 no-entrypoint = []
 no-idl = []

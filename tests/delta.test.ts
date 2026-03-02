@@ -21,7 +21,7 @@ describe('calculateDeltas', () => {
     const miners: Miner[] = [
       { account: '0xeth1', solAddress: 'wallet1', xnm: '2E+18', xblk: '0' },
     ];
-    const snapshot = new Map<string, bigint>([['wallet1', 1000000000n]]);
+    const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
     const result = calculateDeltas(miners, snapshot);
 
@@ -34,7 +34,7 @@ describe('calculateDeltas', () => {
     const miners: Miner[] = [
       { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18', xblk: '0' },
     ];
-    const snapshot = new Map<string, bigint>([['wallet1', 1000000000n]]);
+    const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
     const result = calculateDeltas(miners, snapshot);
 
@@ -45,7 +45,7 @@ describe('calculateDeltas', () => {
     const miners: Miner[] = [
       { account: '0xeth1', solAddress: 'wallet1', xnm: '5E+17', xblk: '0' },
     ];
-    const snapshot = new Map<string, bigint>([['wallet1', 1000000000n]]);
+    const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
     const result = calculateDeltas(miners, snapshot);
 
@@ -60,9 +60,9 @@ describe('calculateDeltas', () => {
       { account: '0xeth4', solAddress: 'wallet4', xnm: '2E+18', xblk: '0' }, // new
     ];
     const snapshot = new Map<string, bigint>([
-      ['wallet1', 1000000000n],
-      ['wallet2', 1000000000n],
-      ['wallet3', 1000000000n],
+      ['0xeth1', 1000000000n],
+      ['0xeth2', 1000000000n],
+      ['0xeth3', 1000000000n],
     ]);
 
     const result = calculateDeltas(miners, snapshot);

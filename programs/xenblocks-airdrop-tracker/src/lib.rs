@@ -154,6 +154,135 @@ pub mod xenblocks_airdrop_tracker {
         msg!("Closed airdrop record and reclaimed rent");
         Ok(())
     }
+
+    // ========================================================================
+    // V2 Instructions (ETH-only PDA)
+    // ========================================================================
+
+    /// Initialize a new V2 airdrop record keyed by ETH address only
+    pub fn initialize_record_v2(
+        ctx: Context<InitializeRecordV2>,
+        eth_address: [u8; 42],
+    ) -> Result<()> {
+        let record = &mut ctx.accounts.airdrop_record;
+        record.eth_address = eth_address;
+        record.xnm_airdropped = 0;
+        record.xblk_airdropped = 0;
+        record.xuni_airdropped = 0;
+        record.native_airdropped = 0;
+        record.reserved = [0u64; 4];
+        record.last_updated = Clock::get()?.unix_timestamp;
+        record.bump = ctx.bumps.airdrop_record;
+
+        msg!("Initialized V2 airdrop record for eth: {:?}", &eth_address[..6]);
+        Ok(())
+    }
+
+    /// Update an existing V2 airdrop record after a successful transfer
+    pub fn update_record_v2(
+        ctx: Context<UpdateRecordV2>,
+        xnm_amount: u64,
+        xblk_amount: u64,
+        xuni_amount: u64,
+        native_amount: u64,
+    ) -> Result<()> {
+        let record = &mut ctx.accounts.airdrop_record;
+
+        record.xnm_airdropped = record
+            .xnm_airdropped
+            .checked_add(xnm_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        record.xblk_airdropped = record
+            .xblk_airdropped
+            .checked_add(xblk_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        record.xuni_airdropped = record
+            .xuni_airdropped
+            .checked_add(xuni_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        record.native_airdropped = record
+            .native_airdropped
+            .checked_add(native_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        record.last_updated = Clock::get()?.unix_timestamp;
+
+        msg!(
+            "Updated V2 airdrop record: xnm={}, xblk={}, xuni={}, native={}",
+            xnm_amount,
+            xblk_amount,
+            xuni_amount,
+            native_amount
+        );
+        Ok(())
+    }
+
+    /// Initialize a V2 record and immediately set amounts (for new wallets during airdrop)
+    pub fn initialize_and_update_v2(
+        ctx: Context<InitializeRecordV2>,
+        eth_address: [u8; 42],
+        xnm_amount: u64,
+        xblk_amount: u64,
+        xuni_amount: u64,
+        native_amount: u64,
+    ) -> Result<()> {
+        let record = &mut ctx.accounts.airdrop_record;
+        record.eth_address = eth_address;
+        record.xnm_airdropped = xnm_amount;
+        record.xblk_airdropped = xblk_amount;
+        record.xuni_airdropped = xuni_amount;
+        record.native_airdropped = native_amount;
+        record.reserved = [0u64; 4];
+        record.last_updated = Clock::get()?.unix_timestamp;
+        record.bump = ctx.bumps.airdrop_record;
+
+        msg!(
+            "Initialized and updated V2 airdrop record: xnm={}, xblk={}, xuni={}, native={}",
+            xnm_amount,
+            xblk_amount,
+            xuni_amount,
+            native_amount
+        );
+        Ok(())
+    }
+
+    /// Close a V2 airdrop record and reclaim rent (admin only)
+    pub fn close_record_v2(_ctx: Context<CloseRecordV2>) -> Result<()> {
+        msg!("Closed V2 airdrop record and reclaimed rent");
+        Ok(())
+    }
+
+    /// Migrate a V1 airdrop record to V2 (ETH-only PDA)
+    /// Copies all fields from old_record to new_record, then closes old_record.
+    /// Accepts canonical (lowercased) ETH address for V2 PDA derivation so that
+    /// mixed-case V1 records produce the same PDA the client expects.
+    pub fn migrate_record(ctx: Context<MigrateRecord>, canonical_eth: [u8; 42]) -> Result<()> {
+        let old = &ctx.accounts.old_record;
+
+        // Validate canonical_eth is the lowercased form of old_record.eth_address
+        let mut lowered = old.eth_address;
+        for byte in lowered.iter_mut() {
+            *byte = byte.to_ascii_lowercase();
+        }
+        require!(canonical_eth == lowered, ErrorCode::EthAddressMismatch);
+
+        let new = &mut ctx.accounts.new_record;
+
+        new.eth_address = canonical_eth;
+        new.xnm_airdropped = old.xnm_airdropped;
+        new.xblk_airdropped = old.xblk_airdropped;
+        new.xuni_airdropped = old.xuni_airdropped;
+        new.native_airdropped = old.native_airdropped;
+        new.reserved = old.reserved;
+        new.last_updated = old.last_updated;
+        new.bump = ctx.bumps.new_record;
+
+        msg!(
+            "Migrated airdrop record from V1 to V2 for eth: {:?}",
+            &canonical_eth[..6]
+        );
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -283,6 +412,129 @@ pub struct CloseRecord<'info> {
 }
 
 // ============================================================================
+// V2 Account Contexts (ETH-only PDA)
+// ============================================================================
+
+#[derive(Accounts)]
+#[instruction(eth_address: [u8; 42])]
+pub struct InitializeRecordV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRecordV2::INIT_SPACE,
+        seeds = [
+            b"airdrop_record_v2",
+            &eth_address[..21],
+            &eth_address[21..42],
+        ],
+        bump
+    )]
+    pub airdrop_record: Account<'info, AirdropRecordV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateRecordV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        seeds = [
+            b"airdrop_record_v2",
+            &airdrop_record.eth_address[..21],
+            &airdrop_record.eth_address[21..42],
+        ],
+        bump = airdrop_record.bump
+    )]
+    pub airdrop_record: Account<'info, AirdropRecordV2>,
+}
+
+#[derive(Accounts)]
+pub struct CloseRecordV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [
+            b"airdrop_record_v2",
+            &airdrop_record.eth_address[..21],
+            &airdrop_record.eth_address[21..42],
+        ],
+        bump = airdrop_record.bump
+    )]
+    pub airdrop_record: Account<'info, AirdropRecordV2>,
+}
+
+#[derive(Accounts)]
+#[instruction(canonical_eth: [u8; 42])]
+pub struct MigrateRecord<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [
+            b"airdrop_record",
+            old_record.sol_wallet.as_ref(),
+            &old_record.eth_address[..20],
+        ],
+        bump = old_record.bump
+    )]
+    pub old_record: Account<'info, AirdropRecord>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRecordV2::INIT_SPACE,
+        seeds = [
+            b"airdrop_record_v2",
+            &canonical_eth[..21],
+            &canonical_eth[21..42],
+        ],
+        bump
+    )]
+    pub new_record: Account<'info, AirdropRecordV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+// ============================================================================
 // Account Structs
 // ============================================================================
 
@@ -337,10 +589,33 @@ pub struct AirdropRecord {
     pub bump: u8, // 1 byte
 }
 
+#[account]
+#[derive(InitSpace)]
+pub struct AirdropRecordV2 {
+    /// The associated ETH address (as UTF-8 bytes, e.g., "0x1234...")
+    pub eth_address: [u8; 42], // 42 bytes
+    /// Cumulative XNM amount airdropped (in token base units, 9 decimals)
+    pub xnm_airdropped: u64, // 8 bytes
+    /// Cumulative XBLK amount airdropped (in token base units, 9 decimals)
+    pub xblk_airdropped: u64, // 8 bytes
+    /// Cumulative XUNI amount airdropped (in token base units, 9 decimals)
+    pub xuni_airdropped: u64, // 8 bytes
+    /// Cumulative native token (XNT) airdropped (in lamports, 9 decimals)
+    pub native_airdropped: u64, // 8 bytes
+    /// Reserved space for future use (8 bytes each * 4 = 32 bytes)
+    pub reserved: [u64; 4], // 32 bytes
+    /// Unix timestamp of last update
+    pub last_updated: i64, // 8 bytes
+    /// PDA bump seed for derivation
+    pub bump: u8, // 1 byte
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Arithmetic overflow when updating total")]
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
+    #[msg("Canonical ETH address does not match lowercased old record")]
+    EthAddressMismatch,
 }

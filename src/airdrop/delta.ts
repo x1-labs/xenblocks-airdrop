@@ -35,7 +35,7 @@ export function calculateDeltas(
   for (const miner of currentMiners) {
     const apiAmount = getTokenAmount(miner, tokenType);
     const currentAmount = convertApiAmountToTokenAmount(apiAmount);
-    const snapshotKey = makeSnapshotKey(miner.solAddress, miner.account);
+    const snapshotKey = makeSnapshotKey(miner.account);
     const previousAmount = lastSnapshot.get(snapshotKey) ?? 0n;
     const deltaAmount = currentAmount - previousAmount;
 
@@ -68,7 +68,7 @@ export function calculateMultiTokenDeltas(
   const results: MultiTokenDelta[] = [];
 
   for (const miner of currentMiners) {
-    const snapshotKey = makeSnapshotKey(miner.solAddress, miner.account);
+    const snapshotKey = makeSnapshotKey(miner.account);
     const snapshot = snapshots.get(snapshotKey);
 
     const xnmApiAmount = miner.xnm || '0';

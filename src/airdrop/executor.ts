@@ -4,6 +4,8 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  Transaction,
+  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import { Config, TokenConfig } from '../config.js';
 import {
@@ -24,6 +26,8 @@ import {
 } from '../solana/transfer.js';
 import {
   fetchAllMultiTokenSnapshots,
+  fetchAllLegacyRecords,
+  countLegacyRecords,
   makeSnapshotKey,
   createOnChainRun,
   updateOnChainRunTotals,
@@ -31,7 +35,13 @@ import {
   getGlobalState,
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
+  createMigrateRecordInstruction,
 } from '../onchain/client.js';
+import {
+  deriveAirdropRecordPDA,
+  deriveAirdropRecordPDALegacy,
+  ethAddressToBytes,
+} from '../onchain/pda.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -300,16 +310,32 @@ export async function executeAirdrop(
     miners = allMiners;
   }
 
-  // Fetch on-chain snapshots once (for both tokens)
+  // Check for unmigrated legacy records
+  const { migratable, nonMigratable } = await countLegacyRecords(
+    connection,
+    config.airdropTrackerProgramId
+  );
+  if (migratable > 0) {
+    logger.fatal(
+      { migratable, nonMigratable },
+      'Unmigrated V1 records found. Run with --migrate first to migrate them to V2.'
+    );
+    throw new Error(
+      `Cannot run airdrop: ${migratable} unmigrated V1 records exist. Run --migrate first.`
+    );
+  }
+  if (nonMigratable > 0) {
+    logger.warn(
+      { nonMigratable },
+      'Legacy 99-byte records found. These use an older schema and cannot be migrated via --migrate. They are excluded from snapshot calculations and may require manual closure/settlement.'
+    );
+  }
+
+  // Fetch on-chain snapshots (V2 records only)
   logger.info('Fetching on-chain snapshots...');
-  const minerData = miners.map((m) => ({
-    solAddress: m.solAddress,
-    ethAddress: m.account,
-  }));
   const snapshots = await fetchAllMultiTokenSnapshots(
     connection,
-    config.airdropTrackerProgramId,
-    minerData
+    config.airdropTrackerProgramId
   );
   logger.info(
     { existingRecords: snapshots.size },
@@ -465,14 +491,11 @@ async function processSingleRecipient(
   delta: MultiTokenDelta,
   hasExistingRecord: boolean
 ): Promise<MultiTokenAirdropResult> {
-  const solWallet = new PublicKey(delta.walletAddress);
-
   // Build single record update instruction for all tokens (including native)
   const recordInstruction = hasExistingRecord
     ? createUpdateRecordInstruction(
         config.airdropTrackerProgramId,
         payer.publicKey,
-        solWallet,
         delta.ethAddress,
         delta.xnmDelta,
         delta.xblkDelta,
@@ -482,7 +505,6 @@ async function processSingleRecipient(
     : createInitializeAndUpdateInstruction(
         config.airdropTrackerProgramId,
         payer.publicKey,
-        solWallet,
         delta.ethAddress,
         delta.xnmDelta,
         delta.xblkDelta,
@@ -665,10 +687,7 @@ async function processMultiTokenAirdrops(
 
     // Process batch concurrently
     const batchPromises = batch.map((delta) => {
-      const snapshotKey = makeSnapshotKey(
-        delta.walletAddress,
-        delta.ethAddress
-      );
+      const snapshotKey = makeSnapshotKey(delta.ethAddress);
       const hasExistingRecord = snapshots.has(snapshotKey);
 
       return processSingleRecipient(
@@ -707,4 +726,85 @@ async function processMultiTokenAirdrops(
   );
 
   return results;
+}
+
+/**
+ * Migrate legacy airdrop records (dual-key SOL+ETH PDA) to V2 (ETH-only PDA)
+ */
+export async function executeMigration(
+  connection: Connection,
+  payer: Keypair,
+  config: Config
+): Promise<void> {
+  logger.info('Starting record migration to V2 (ETH-only PDA)...');
+
+  const legacyRecords = await fetchAllLegacyRecords(
+    connection,
+    config.airdropTrackerProgramId
+  );
+  logger.info({ count: legacyRecords.length }, 'Found legacy records to migrate');
+
+  if (legacyRecords.length === 0) {
+    logger.info('No legacy records found. Migration complete.');
+    return;
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+  let skipCount = 0;
+
+  for (let i = 0; i < legacyRecords.length; i++) {
+    const record = legacyRecords[i];
+    const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
+
+    // Check if V2 record already exists
+    const [newPda] = deriveAirdropRecordPDA(
+      config.airdropTrackerProgramId,
+      ethAddress
+    );
+    const existingV2 = await connection.getAccountInfo(newPda);
+    if (existingV2) {
+      logger.debug({ ethAddress }, 'V2 record already exists, skipping');
+      skipCount++;
+      continue;
+    }
+
+    // Derive old PDA
+    const [oldPda] = deriveAirdropRecordPDALegacy(
+      config.airdropTrackerProgramId,
+      record.solWallet,
+      ethAddress
+    );
+
+    try {
+      const canonicalEthBytes = ethAddressToBytes(ethAddress);
+      const instruction = createMigrateRecordInstruction(
+        config.airdropTrackerProgramId,
+        payer.publicKey,
+        oldPda,
+        newPda,
+        canonicalEthBytes
+      );
+      const transaction = new Transaction().add(instruction);
+      await sendAndConfirmTransaction(connection, transaction, [payer], {
+        commitment: 'confirmed',
+      });
+      successCount++;
+      logger.debug(
+        { ethAddress, progress: `${i + 1}/${legacyRecords.length}` },
+        'Migrated record'
+      );
+    } catch (error) {
+      failCount++;
+      logger.error(
+        { ethAddress, error: String(error) },
+        'Failed to migrate record'
+      );
+    }
+  }
+
+  logger.info(
+    { successCount, failCount, skipCount, total: legacyRecords.length },
+    'Migration complete'
+  );
 }
