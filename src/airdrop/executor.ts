@@ -748,8 +748,7 @@ export async function executeMigration(
 
   for (let i = 0; i < legacyRecords.length; i++) {
     const record = legacyRecords[i];
-    const ethAddressBytes = record.ethAddress.filter((b) => b !== 0);
-    const ethAddress = String.fromCharCode(...ethAddressBytes);
+    const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
 
     // Check if V2 record already exists
     const [newPda] = deriveAirdropRecordPDA(

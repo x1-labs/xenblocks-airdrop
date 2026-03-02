@@ -263,16 +263,16 @@ export async function getOnChainAmounts(
 
 /**
  * Create a key for the snapshot map using ETH address
+ * Normalizes to lowercase to prevent case-sensitive mismatches.
  */
 export function makeSnapshotKey(ethAddress: string): string {
-  return ethAddress;
+  return ethAddress.toLowerCase();
 }
 
 /**
  * Fetch on-chain snapshots for all miners in batch (all tokens)
- * Uses getProgramAccounts for efficiency - single RPC call instead of batched fetches
- * Handles V2 (123 bytes), current (155 bytes), and legacy (99 bytes) account schemas
- * V2 records take priority over legacy records for the same ETH address
+ * Uses getProgramAccounts with dataSize filter for V2 records only (123 bytes).
+ * V1 records are NOT included — run --migrate first to convert them.
  * Returns a Map of ethAddress -> { xnmAirdropped, xblkAirdropped, xuniAirdropped, nativeAirdropped }
  */
 export async function fetchAllMultiTokenSnapshots(
@@ -281,22 +281,14 @@ export async function fetchAllMultiTokenSnapshots(
 ): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>> {
   const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>();
 
-  // Fetch all airdrop record accounts in one call
   const accounts = await connection.getProgramAccounts(programId, {
-    filters: [],
+    filters: [{ dataSize: AIRDROP_RECORD_V2_SIZE }],
   });
 
-  // Process only V2 records (123 bytes)
-  // V1 records are NOT included — run --migrate first to convert them
   for (const { account } of accounts) {
-    if (account.data.length !== AIRDROP_RECORD_V2_SIZE) {
-      continue;
-    }
-
     try {
       const record = deserializeAirdropRecordV2(account.data);
-      const ethAddressBytes = record.ethAddress.filter(b => b !== 0);
-      const ethAddress = String.fromCharCode(...ethAddressBytes);
+      const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
 
       const key = makeSnapshotKey(ethAddress);
       snapshots.set(key, {
@@ -321,19 +313,18 @@ export async function countLegacyRecords(
   connection: Connection,
   programId: PublicKey
 ): Promise<number> {
-  const accounts = await connection.getProgramAccounts(programId, {
-    filters: [],
-  });
+  const [accounts155, accounts99] = await Promise.all([
+    connection.getProgramAccounts(programId, {
+      filters: [{ dataSize: AIRDROP_RECORD_SIZE }],
+      dataSlice: { offset: 0, length: 0 },
+    }),
+    connection.getProgramAccounts(programId, {
+      filters: [{ dataSize: AIRDROP_RECORD_LEGACY_SIZE }],
+      dataSlice: { offset: 0, length: 0 },
+    }),
+  ]);
 
-  let count = 0;
-  for (const { account } of accounts) {
-    const dataLen = account.data.length;
-    if (dataLen === AIRDROP_RECORD_SIZE || dataLen === AIRDROP_RECORD_LEGACY_SIZE) {
-      count++;
-    }
-  }
-
-  return count;
+  return accounts155.length + accounts99.length;
 }
 
 /**
@@ -346,16 +337,12 @@ export async function fetchAllLegacyRecords(
   programId: PublicKey
 ): Promise<AirdropRecord[]> {
   const accounts = await connection.getProgramAccounts(programId, {
-    filters: [],
+    filters: [{ dataSize: AIRDROP_RECORD_SIZE }],
   });
 
   const records: AirdropRecord[] = [];
 
   for (const { account } of accounts) {
-    if (account.data.length !== AIRDROP_RECORD_SIZE) {
-      continue;
-    }
-
     try {
       records.push(deserializeAirdropRecord(account.data));
     } catch {
@@ -464,6 +451,7 @@ export function createInitializeRecordInstruction(
   authority: PublicKey,
   ethAddress: string
 ): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
@@ -475,6 +463,7 @@ export function createInitializeRecordInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
@@ -496,6 +485,7 @@ export function createUpdateRecordInstruction(
   xuniAmount: bigint,
   nativeAmount: bigint = 0n
 ): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
 
   // Anchor discriminator for "update_record_v2"
@@ -512,6 +502,7 @@ export function createUpdateRecordInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
     ],
     programId,
@@ -532,6 +523,7 @@ export function createInitializeAndUpdateInstruction(
   xuniAmount: bigint,
   nativeAmount: bigint = 0n
 ): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
   const [airdropRecord] = deriveAirdropRecordPDA(programId, ethAddress);
   const ethBytes = ethAddressToBytes(ethAddress);
 
@@ -563,6 +555,7 @@ export function createInitializeAndUpdateInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],

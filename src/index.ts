@@ -4,6 +4,8 @@ import { executeAirdrop, executeMigration } from './airdrop/executor.js';
 import logger from './utils/logger.js';
 
 async function main(): Promise<void> {
+  const isMigrate = process.argv.includes('--migrate');
+
   try {
     const config = loadConfig();
 
@@ -38,8 +40,6 @@ async function main(): Promise<void> {
 
     logger.info({ payer: payer.publicKey.toString() }, 'Payer wallet');
 
-    const isMigrate = process.argv.includes('--migrate');
-
     if (isMigrate) {
       logger.info('Migration mode enabled');
       await executeMigration(connection, payer, config);
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       await executeAirdrop(connection, payer, config);
     }
   } catch (error) {
-    logger.fatal({ error }, 'Failed');
+    logger.fatal({ error }, isMigrate ? 'Migration failed' : 'Airdrop failed');
     process.exit(1);
   }
 }

@@ -412,6 +412,13 @@ pub struct InitializeRecordV2<'info> {
     pub authority: Signer<'info>,
 
     #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
         init,
         payer = authority,
         space = 8 + AirdropRecordV2::INIT_SPACE,
@@ -433,6 +440,13 @@ pub struct UpdateRecordV2<'info> {
     pub authority: Signer<'info>,
 
     #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
         mut,
         seeds = [
             b"airdrop_record_v2",
@@ -448,6 +462,13 @@ pub struct UpdateRecordV2<'info> {
 pub struct CloseRecordV2<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
 
     #[account(
         mut,
