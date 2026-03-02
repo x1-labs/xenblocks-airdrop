@@ -310,17 +310,23 @@ export async function executeAirdrop(
   }
 
   // Check for unmigrated legacy records
-  const legacyCount = await countLegacyRecords(
+  const { migratable, nonMigratable } = await countLegacyRecords(
     connection,
     config.airdropTrackerProgramId
   );
-  if (legacyCount > 0) {
+  if (migratable > 0) {
     logger.fatal(
-      { legacyCount },
+      { migratable, nonMigratable },
       'Unmigrated V1 records found. Run with --migrate first to migrate them to V2.'
     );
     throw new Error(
-      `Cannot run airdrop: ${legacyCount} unmigrated V1 records exist. Run --migrate first.`
+      `Cannot run airdrop: ${migratable} unmigrated V1 records exist. Run --migrate first.`
+    );
+  }
+  if (nonMigratable > 0) {
+    logger.warn(
+      { nonMigratable },
+      'Legacy 99-byte records found. These use an older schema and cannot be migrated via --migrate. They will not block the airdrop.'
     );
   }
 

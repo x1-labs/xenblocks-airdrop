@@ -306,13 +306,14 @@ export async function fetchAllMultiTokenSnapshots(
 }
 
 /**
- * Count unmigrated legacy records (155 or 99 byte accounts)
- * Used to check if migration is needed before running airdrop
+ * Count unmigrated legacy records, separated by migratability.
+ * 155-byte records can be migrated via --migrate.
+ * 99-byte records use an older schema incompatible with on-chain migrate_record.
  */
 export async function countLegacyRecords(
   connection: Connection,
   programId: PublicKey
-): Promise<number> {
+): Promise<{ migratable: number; nonMigratable: number }> {
   const [accounts155, accounts99] = await Promise.all([
     connection.getProgramAccounts(programId, {
       filters: [{ dataSize: AIRDROP_RECORD_SIZE }],
@@ -324,7 +325,7 @@ export async function countLegacyRecords(
     }),
   ]);
 
-  return accounts155.length + accounts99.length;
+  return { migratable: accounts155.length, nonMigratable: accounts99.length };
 }
 
 /**
