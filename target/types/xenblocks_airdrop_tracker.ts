@@ -14,37 +14,9 @@ export type XenblocksAirdropTracker = {
   },
   "instructions": [
     {
-      "name": "closeRecord",
-      "docs": [
-        "Close an airdrop record and reclaim rent (admin only)"
-      ],
-      "discriminator": [
-        111,
-        192,
-        122,
-        188,
-        38,
-        234,
-        242,
-        249
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "airdropRecord",
-          "writable": true
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "closeRecordV2",
       "docs": [
-        "Close a V2 airdrop record and reclaim rent (admin only)"
+        "Close an airdrop record and reclaim rent (admin only)"
       ],
       "discriminator": [
         14,
@@ -142,71 +114,9 @@ export type XenblocksAirdropTracker = {
       ]
     },
     {
-      "name": "initializeAndUpdate",
-      "docs": [
-        "Initialize a record and immediately update it (for new wallets during airdrop)",
-        "Sets all three token amounts plus native amount at once"
-      ],
-      "discriminator": [
-        110,
-        48,
-        174,
-        47,
-        71,
-        105,
-        223,
-        39
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "solWallet"
-        },
-        {
-          "name": "airdropRecord",
-          "writable": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "ethAddress",
-          "type": {
-            "array": [
-              "u8",
-              42
-            ]
-          }
-        },
-        {
-          "name": "xnmAmount",
-          "type": "u64"
-        },
-        {
-          "name": "xblkAmount",
-          "type": "u64"
-        },
-        {
-          "name": "xuniAmount",
-          "type": "u64"
-        },
-        {
-          "name": "nativeAmount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "initializeAndUpdateV2",
       "docs": [
-        "Initialize a V2 record and immediately set amounts (for new wallets during airdrop)"
+        "Initialize a record and immediately set amounts (for new wallets during airdrop)"
       ],
       "discriminator": [
         11,
@@ -279,54 +189,9 @@ export type XenblocksAirdropTracker = {
       ]
     },
     {
-      "name": "initializeRecord",
-      "docs": [
-        "Initialize a new airdrop record for a wallet/eth pair"
-      ],
-      "discriminator": [
-        92,
-        106,
-        172,
-        44,
-        148,
-        3,
-        42,
-        251
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "solWallet"
-        },
-        {
-          "name": "airdropRecord",
-          "writable": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "ethAddress",
-          "type": {
-            "array": [
-              "u8",
-              42
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "initializeRecordV2",
       "docs": [
-        "Initialize a new V2 airdrop record keyed by ETH address only"
+        "Initialize a new airdrop record keyed by ETH address"
       ],
       "discriminator": [
         9,
@@ -429,121 +294,9 @@ export type XenblocksAirdropTracker = {
       "args": []
     },
     {
-      "name": "migrateRecord",
-      "docs": [
-        "Migrate a V1 airdrop record to V2 (ETH-only PDA)",
-        "Copies all fields from old_record to new_record, then closes old_record.",
-        "Accepts canonical (lowercased) ETH address for V2 PDA derivation so that",
-        "mixed-case V1 records produce the same PDA the client expects."
-      ],
-      "discriminator": [
-        11,
-        152,
-        11,
-        75,
-        10,
-        158,
-        213,
-        126
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "oldRecord",
-          "writable": true
-        },
-        {
-          "name": "newRecord",
-          "writable": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "canonicalEth",
-          "type": {
-            "array": [
-              "u8",
-              42
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "updateRecord",
-      "docs": [
-        "Update an existing airdrop record after a successful transfer",
-        "Updates all three token amounts plus native amount at once"
-      ],
-      "discriminator": [
-        54,
-        194,
-        108,
-        162,
-        199,
-        12,
-        5,
-        60
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "airdropRecord",
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "xnmAmount",
-          "type": "u64"
-        },
-        {
-          "name": "xblkAmount",
-          "type": "u64"
-        },
-        {
-          "name": "xuniAmount",
-          "type": "u64"
-        },
-        {
-          "name": "nativeAmount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "updateRecordV2",
       "docs": [
-        "Update an existing V2 airdrop record after a successful transfer"
+        "Update an existing airdrop record after a successful transfer"
       ],
       "discriminator": [
         128,
@@ -676,19 +429,6 @@ export type XenblocksAirdropTracker = {
   ],
   "accounts": [
     {
-      "name": "airdropRecord",
-      "discriminator": [
-        1,
-        181,
-        208,
-        237,
-        232,
-        225,
-        112,
-        229
-      ]
-    },
-    {
       "name": "airdropRecordV2",
       "discriminator": [
         246,
@@ -738,95 +478,9 @@ export type XenblocksAirdropTracker = {
       "code": 6001,
       "name": "unauthorized",
       "msg": "Unauthorized: signer is not the authority"
-    },
-    {
-      "code": 6002,
-      "name": "ethAddressMismatch",
-      "msg": "Canonical ETH address does not match lowercased old record"
     }
   ],
   "types": [
-    {
-      "name": "airdropRecord",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "solWallet",
-            "docs": [
-              "The Solana wallet address that receives airdrops"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "ethAddress",
-            "docs": [
-              "The associated ETH address (as UTF-8 bytes, e.g., \"0x1234...\")"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                42
-              ]
-            }
-          },
-          {
-            "name": "xnmAirdropped",
-            "docs": [
-              "Cumulative XNM amount airdropped (in token base units, 9 decimals)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "xblkAirdropped",
-            "docs": [
-              "Cumulative XBLK amount airdropped (in token base units, 9 decimals)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "xuniAirdropped",
-            "docs": [
-              "Cumulative XUNI amount airdropped (in token base units, 9 decimals)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "nativeAirdropped",
-            "docs": [
-              "Cumulative native token (XNT) airdropped (in lamports, 9 decimals)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "reserved",
-            "docs": [
-              "Reserved space for future use (8 bytes each * 4 = 32 bytes)"
-            ],
-            "type": {
-              "array": [
-                "u64",
-                4
-              ]
-            }
-          },
-          {
-            "name": "lastUpdated",
-            "docs": [
-              "Unix timestamp of last update"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed for derivation"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
     {
       "name": "airdropRecordV2",
       "type": {

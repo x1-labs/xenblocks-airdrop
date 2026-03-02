@@ -14,15 +14,10 @@ import {
   ethAddressToBytes,
 } from './pda.js';
 import {
-  AIRDROP_RECORD_OFFSETS,
-  AIRDROP_RECORD_LEGACY_OFFSETS,
-  AIRDROP_RECORD_SIZE,
-  AIRDROP_RECORD_LEGACY_SIZE,
   AIRDROP_RECORD_V2_OFFSETS,
   AIRDROP_RECORD_V2_SIZE,
   GLOBAL_STATE_OFFSETS,
   AIRDROP_RUN_OFFSETS,
-  AirdropRecord,
   AirdropRecordV2,
   GlobalState,
   OnChainAirdropRun,
@@ -60,94 +55,7 @@ export function deserializeAirdropRun(data: Buffer): OnChainAirdropRun {
 }
 
 /**
- * Deserialize an AirdropRecord from account data
- * Handles both legacy (99 bytes) and new (155 bytes) schemas
- */
-export function deserializeAirdropRecord(data: Buffer): AirdropRecord {
-  const isLegacySchema = data.length === AIRDROP_RECORD_LEGACY_SIZE;
-
-  const solWallet = new PublicKey(
-    data.slice(
-      AIRDROP_RECORD_OFFSETS.SOL_WALLET,
-      AIRDROP_RECORD_OFFSETS.ETH_ADDRESS
-    )
-  );
-
-  const ethAddress = Array.from(
-    data.slice(
-      AIRDROP_RECORD_OFFSETS.ETH_ADDRESS,
-      AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
-    )
-  );
-
-  if (isLegacySchema) {
-    // Legacy schema: single total_airdropped field, no reserved array
-    const totalAirdropped = data.readBigUInt64LE(
-      AIRDROP_RECORD_LEGACY_OFFSETS.TOTAL_AIRDROPPED
-    );
-    const lastUpdated = data.readBigInt64LE(
-      AIRDROP_RECORD_LEGACY_OFFSETS.LAST_UPDATED
-    );
-    const bump = data.readUInt8(AIRDROP_RECORD_LEGACY_OFFSETS.BUMP);
-
-    return {
-      solWallet,
-      ethAddress,
-      xnmAirdropped: totalAirdropped, // Legacy uses single field, treat as XNM
-      xblkAirdropped: 0n,
-      xuniAirdropped: 0n,
-      nativeAirdropped: 0n,
-      reserved: [0n, 0n, 0n, 0n],
-      lastUpdated,
-      bump,
-    };
-  }
-
-  // New schema with separate XNM/XBLK/XUNI fields, native field, and reserved array
-  const xnmAirdropped = data.readBigUInt64LE(
-    AIRDROP_RECORD_OFFSETS.XNM_AIRDROPPED
-  );
-
-  const xblkAirdropped = data.readBigUInt64LE(
-    AIRDROP_RECORD_OFFSETS.XBLK_AIRDROPPED
-  );
-
-  const xuniAirdropped = data.readBigUInt64LE(
-    AIRDROP_RECORD_OFFSETS.XUNI_AIRDROPPED
-  );
-
-  const nativeAirdropped = data.readBigUInt64LE(
-    AIRDROP_RECORD_OFFSETS.NATIVE_AIRDROPPED
-  );
-
-  // Read reserved array (4 u64 values)
-  const reserved: bigint[] = [];
-  for (let i = 0; i < 4; i++) {
-    reserved.push(
-      data.readBigUInt64LE(AIRDROP_RECORD_OFFSETS.RESERVED + i * 8)
-    );
-  }
-
-  const lastUpdated = data.readBigInt64LE(AIRDROP_RECORD_OFFSETS.LAST_UPDATED);
-
-  const bump = data.readUInt8(AIRDROP_RECORD_OFFSETS.BUMP);
-
-  return {
-    solWallet,
-    ethAddress,
-    xnmAirdropped,
-    xblkAirdropped,
-    xuniAirdropped,
-    nativeAirdropped,
-    reserved,
-    lastUpdated,
-    bump,
-  };
-}
-
-/**
  * Deserialize an AirdropRecordV2 from account data
- * V2 records have no sol_wallet field (ETH-only PDA)
  */
 export function deserializeAirdropRecordV2(data: Buffer): AirdropRecordV2 {
   const ethAddress = Array.from(
@@ -271,8 +179,6 @@ export function makeSnapshotKey(ethAddress: string): string {
 
 /**
  * Fetch on-chain snapshots for all miners in batch (all tokens)
- * Uses getProgramAccounts with dataSize filter for V2 records only (123 bytes).
- * V1 records are NOT included — run --migrate first to convert them.
  * Returns a Map of ethAddress -> { xnmAirdropped, xblkAirdropped, xuniAirdropped, nativeAirdropped }
  */
 export async function fetchAllMultiTokenSnapshots(
@@ -303,55 +209,6 @@ export async function fetchAllMultiTokenSnapshots(
   }
 
   return snapshots;
-}
-
-/**
- * Count unmigrated legacy records, separated by migratability.
- * 155-byte records can be migrated via --migrate.
- * 99-byte records use an older schema incompatible with on-chain migrate_record.
- */
-export async function countLegacyRecords(
-  connection: Connection,
-  programId: PublicKey
-): Promise<{ migratable: number; nonMigratable: number }> {
-  const [accounts155, accounts99] = await Promise.all([
-    connection.getProgramAccounts(programId, {
-      filters: [{ dataSize: AIRDROP_RECORD_SIZE }],
-      dataSlice: { offset: 0, length: 0 },
-    }),
-    connection.getProgramAccounts(programId, {
-      filters: [{ dataSize: AIRDROP_RECORD_LEGACY_SIZE }],
-      dataSlice: { offset: 0, length: 0 },
-    }),
-  ]);
-
-  return { migratable: accounts155.length, nonMigratable: accounts99.length };
-}
-
-/**
- * Fetch all migratable legacy airdrop records (155 byte accounts only)
- * 99-byte legacy accounts use an older schema incompatible with on-chain migrate_record
- * Returns deserialized AirdropRecord array for migration purposes
- */
-export async function fetchAllLegacyRecords(
-  connection: Connection,
-  programId: PublicKey
-): Promise<AirdropRecord[]> {
-  const accounts = await connection.getProgramAccounts(programId, {
-    filters: [{ dataSize: AIRDROP_RECORD_SIZE }],
-  });
-
-  const records: AirdropRecord[] = [];
-
-  for (const { account } of accounts) {
-    try {
-      records.push(deserializeAirdropRecord(account.data));
-    } catch {
-      // Skip malformed accounts
-    }
-  }
-
-  return records;
 }
 
 // ============================================================================
@@ -445,7 +302,7 @@ export function createUpdateRunTotalsInstruction(
 }
 
 /**
- * Create instruction to initialize a new V2 airdrop record (ETH-only PDA)
+ * Create instruction to initialize a new airdrop record
  */
 export function createInitializeRecordInstruction(
   programId: PublicKey,
@@ -474,8 +331,7 @@ export function createInitializeRecordInstruction(
 }
 
 /**
- * Create instruction to update an existing V2 airdrop record (ETH-only PDA)
- * Updates all three token amounts plus native amount at once
+ * Create instruction to update an existing airdrop record
  */
 export function createUpdateRecordInstruction(
   programId: PublicKey,
@@ -512,8 +368,7 @@ export function createUpdateRecordInstruction(
 }
 
 /**
- * Create instruction to initialize and update V2 record in one call (ETH-only PDA)
- * Sets all three token amounts plus native amount at once
+ * Create instruction to initialize and update a record in one call
  */
 export function createInitializeAndUpdateInstruction(
   programId: PublicKey,
@@ -558,38 +413,6 @@ export function createInitializeAndUpdateInstruction(
       { pubkey: authority, isSigner: true, isWritable: true },
       { pubkey: state, isSigner: false, isWritable: false },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId,
-    data,
-  });
-}
-
-/**
- * Create instruction to migrate a legacy record to a V2 record
- */
-export function createMigrateRecordInstruction(
-  programId: PublicKey,
-  authority: PublicKey,
-  oldRecord: PublicKey,
-  newRecord: PublicKey,
-  canonicalEthBytes: number[]
-): TransactionInstruction {
-  const [state] = deriveGlobalStatePDA(programId);
-
-  // Anchor discriminator for "migrate_record"
-  const discriminator = Buffer.from([11, 152, 11, 75, 10, 158, 213, 126]);
-
-  // Encode canonical_eth as [u8; 42] (fixed-size, no length prefix)
-  const ethData = Buffer.from(canonicalEthBytes);
-  const data = Buffer.concat([discriminator, ethData]);
-
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: state, isSigner: false, isWritable: false },
-      { pubkey: oldRecord, isSigner: false, isWritable: true },
-      { pubkey: newRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     programId,
@@ -690,9 +513,8 @@ export async function updateOnChainRunTotals(
 }
 
 /**
- * Update on-chain V2 record after a successful airdrop
+ * Update on-chain record after a successful airdrop
  * Creates the record if it doesn't exist
- * Updates all three token amounts plus native amount at once
  */
 export async function updateOnChainRecord(
   connection: Connection,

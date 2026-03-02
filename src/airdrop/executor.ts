@@ -4,8 +4,6 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
-  Transaction,
-  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import { Config, TokenConfig } from '../config.js';
 import {
@@ -26,8 +24,6 @@ import {
 } from '../solana/transfer.js';
 import {
   fetchAllMultiTokenSnapshots,
-  fetchAllLegacyRecords,
-  countLegacyRecords,
   makeSnapshotKey,
   createOnChainRun,
   updateOnChainRunTotals,
@@ -35,13 +31,7 @@ import {
   getGlobalState,
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
-  createMigrateRecordInstruction,
 } from '../onchain/client.js';
-import {
-  deriveAirdropRecordPDA,
-  deriveAirdropRecordPDALegacy,
-  ethAddressToBytes,
-} from '../onchain/pda.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -310,28 +300,7 @@ export async function executeAirdrop(
     miners = allMiners;
   }
 
-  // Check for unmigrated legacy records
-  const { migratable, nonMigratable } = await countLegacyRecords(
-    connection,
-    config.airdropTrackerProgramId
-  );
-  if (migratable > 0) {
-    logger.fatal(
-      { migratable, nonMigratable },
-      'Unmigrated V1 records found. Run with --migrate first to migrate them to V2.'
-    );
-    throw new Error(
-      `Cannot run airdrop: ${migratable} unmigrated V1 records exist. Run --migrate first.`
-    );
-  }
-  if (nonMigratable > 0) {
-    logger.warn(
-      { nonMigratable },
-      'Legacy 99-byte records found. These use an older schema and cannot be migrated via --migrate. They are excluded from snapshot calculations and may require manual closure/settlement.'
-    );
-  }
-
-  // Fetch on-chain snapshots (V2 records only)
+  // Fetch on-chain snapshots
   logger.info('Fetching on-chain snapshots...');
   const snapshots = await fetchAllMultiTokenSnapshots(
     connection,
@@ -727,110 +696,4 @@ async function processMultiTokenAirdrops(
   );
 
   return results;
-}
-
-/**
- * Migrate legacy airdrop records (dual-key SOL+ETH PDA) to V2 (ETH-only PDA)
- */
-export async function executeMigration(
-  connection: Connection,
-  payer: Keypair,
-  config: Config
-): Promise<void> {
-  logger.info('Starting record migration to V2 (ETH-only PDA)...');
-
-  const legacyRecords = await fetchAllLegacyRecords(
-    connection,
-    config.airdropTrackerProgramId
-  );
-  logger.info({ count: legacyRecords.length }, 'Found legacy records to migrate');
-
-  if (legacyRecords.length === 0) {
-    logger.info('No legacy records found. Migration complete.');
-    return;
-  }
-
-  let successCount = 0;
-  let failCount = 0;
-  let skipCount = 0;
-
-  const { concurrency } = config;
-
-  for (let i = 0; i < legacyRecords.length; i += concurrency) {
-    const batch = legacyRecords.slice(i, i + concurrency);
-    const progress = (
-      (Math.min(i + concurrency, legacyRecords.length) / legacyRecords.length) *
-      100
-    ).toFixed(1);
-
-    logger.info(
-      {
-        progress: `${progress}%`,
-        processed: `${Math.min(i + concurrency, legacyRecords.length)}/${legacyRecords.length}`,
-        success: successCount,
-        failed: failCount,
-        skipped: skipCount,
-        concurrent: batch.length,
-      },
-      'Migration progress'
-    );
-
-    const batchPromises = batch.map(async (record) => {
-      const ethAddress = Buffer.from(record.ethAddress).toString('utf8');
-
-      // Check if V2 record already exists
-      const [newPda] = deriveAirdropRecordPDA(
-        config.airdropTrackerProgramId,
-        ethAddress
-      );
-      const existingV2 = await connection.getAccountInfo(newPda);
-      if (existingV2) {
-        logger.debug({ ethAddress }, 'V2 record already exists, skipping');
-        return 'skip' as const;
-      }
-
-      // Derive old PDA
-      const [oldPda] = deriveAirdropRecordPDALegacy(
-        config.airdropTrackerProgramId,
-        record.solWallet,
-        ethAddress
-      );
-
-      try {
-        const canonicalEthBytes = ethAddressToBytes(ethAddress);
-        const instruction = createMigrateRecordInstruction(
-          config.airdropTrackerProgramId,
-          payer.publicKey,
-          oldPda,
-          newPda,
-          canonicalEthBytes
-        );
-        const transaction = new Transaction().add(instruction);
-        await sendAndConfirmTransaction(connection, transaction, [payer], {
-          commitment: 'confirmed',
-        });
-        logger.debug({ ethAddress }, 'Migrated record');
-        return 'success' as const;
-      } catch (error) {
-        logger.error(
-          { ethAddress, error: String(error) },
-          'Failed to migrate record'
-        );
-        return 'fail' as const;
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-
-    for (const result of batchResults) {
-      if (result === 'success') successCount++;
-      else if (result === 'fail') failCount++;
-      else skipCount++;
-    }
-  }
-
-  logger.info(
-    { successCount, failCount, skipCount, total: legacyRecords.length },
-    'Migration complete'
-  );
 }
