@@ -22,21 +22,6 @@ export interface OnChainAirdropRun {
 }
 
 /**
- * On-chain AirdropRecord account data structure
- */
-export interface AirdropRecord {
-  solWallet: PublicKey;
-  ethAddress: number[]; // [u8; 42]
-  xnmAirdropped: bigint;
-  xblkAirdropped: bigint;
-  xuniAirdropped: bigint;
-  nativeAirdropped: bigint;
-  reserved: bigint[]; // [u64; 4] - reserved for future tokens
-  lastUpdated: bigint;
-  bump: number;
-}
-
-/**
  * Offset constants for GlobalState deserialization
  * Account layout:
  * - 8 bytes: Anchor discriminator
@@ -77,57 +62,7 @@ export const AIRDROP_RUN_OFFSETS = {
 export const AIRDROP_RUN_SIZE = 8 + 8 + 8 + 4 + 8 + 1 + 1; // 38 bytes
 
 /**
- * Offset constants for AirdropRecord deserialization (NEW schema)
- * Account layout:
- * - 8 bytes: Anchor discriminator
- * - 32 bytes: sol_wallet (Pubkey)
- * - 42 bytes: eth_address ([u8; 42])
- * - 8 bytes: xnm_airdropped (u64)
- * - 8 bytes: xblk_airdropped (u64)
- * - 8 bytes: xuni_airdropped (u64)
- * - 8 bytes: native_airdropped (u64)
- * - 32 bytes: reserved ([u64; 4])
- * - 8 bytes: last_updated (i64)
- * - 1 byte: bump (u8)
- */
-export const AIRDROP_RECORD_OFFSETS = {
-  DISCRIMINATOR: 0,
-  SOL_WALLET: 8,
-  ETH_ADDRESS: 8 + 32,
-  XNM_AIRDROPPED: 8 + 32 + 42,
-  XBLK_AIRDROPPED: 8 + 32 + 42 + 8,
-  XUNI_AIRDROPPED: 8 + 32 + 42 + 8 + 8,
-  NATIVE_AIRDROPPED: 8 + 32 + 42 + 8 + 8 + 8,
-  RESERVED: 8 + 32 + 42 + 8 + 8 + 8 + 8,
-  LAST_UPDATED: 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32,
-  BUMP: 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32 + 8,
-} as const;
-
-export const AIRDROP_RECORD_SIZE = 8 + 32 + 42 + 8 + 8 + 8 + 8 + 32 + 8 + 1; // 155 bytes
-
-/**
- * Offset constants for AirdropRecord deserialization (OLD/legacy schema)
- * Account layout:
- * - 8 bytes: Anchor discriminator
- * - 32 bytes: sol_wallet (Pubkey)
- * - 42 bytes: eth_address ([u8; 42])
- * - 8 bytes: total_airdropped (u64) - single field for all tokens
- * - 8 bytes: last_updated (i64)
- * - 1 byte: bump (u8)
- */
-export const AIRDROP_RECORD_LEGACY_OFFSETS = {
-  DISCRIMINATOR: 0,
-  SOL_WALLET: 8,
-  ETH_ADDRESS: 8 + 32,
-  TOTAL_AIRDROPPED: 8 + 32 + 42,
-  LAST_UPDATED: 8 + 32 + 42 + 8,
-  BUMP: 8 + 32 + 42 + 8 + 8,
-} as const;
-
-export const AIRDROP_RECORD_LEGACY_SIZE = 8 + 32 + 42 + 8 + 8 + 1; // 99 bytes
-
-/**
- * On-chain AirdropRecord V2 account data structure (ETH-only, no sol_wallet)
+ * On-chain AirdropRecord account data structure (ETH-only PDA)
  */
 export interface AirdropRecordV2 {
   ethAddress: number[]; // [u8; 42]
@@ -141,7 +76,7 @@ export interface AirdropRecordV2 {
 }
 
 /**
- * Offset constants for AirdropRecord V2 deserialization (ETH-only schema)
+ * Offset constants for AirdropRecord deserialization
  * Account layout:
  * - 8 bytes: Anchor discriminator
  * - 42 bytes: eth_address ([u8; 42])

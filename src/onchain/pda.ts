@@ -55,23 +55,6 @@ export function deriveAirdropRecordPDA(
   );
 }
 
-/**
- * Derive the PDA for an airdrop record (legacy — includes sol_wallet)
- *
- * Seeds: ["airdrop_record", sol_wallet, eth_address[0..20]]
- */
-export function deriveAirdropRecordPDALegacy(
-  programId: PublicKey,
-  solWallet: PublicKey,
-  ethAddress: string
-): [PublicKey, number] {
-  const ethBytes = Buffer.from(ethAddress).slice(0, 20);
-
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('airdrop_record'), solWallet.toBuffer(), ethBytes],
-    programId
-  );
-}
 
 /**
  * Convert an ETH address string to a 42-byte array for the program
