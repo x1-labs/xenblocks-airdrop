@@ -572,12 +572,17 @@ export function createMigrateRecordInstruction(
   programId: PublicKey,
   authority: PublicKey,
   oldRecord: PublicKey,
-  newRecord: PublicKey
+  newRecord: PublicKey,
+  canonicalEthBytes: number[]
 ): TransactionInstruction {
   const [state] = deriveGlobalStatePDA(programId);
 
   // Anchor discriminator for "migrate_record"
   const discriminator = Buffer.from([11, 152, 11, 75, 10, 158, 213, 126]);
+
+  // Encode canonical_eth as [u8; 42] (fixed-size, no length prefix)
+  const ethData = Buffer.from(canonicalEthBytes);
+  const data = Buffer.concat([discriminator, ethData]);
 
   return new TransactionInstruction({
     keys: [
@@ -588,7 +593,7 @@ export function createMigrateRecordInstruction(
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     programId,
-    data: discriminator,
+    data,
   });
 }
 

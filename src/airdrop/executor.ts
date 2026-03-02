@@ -40,6 +40,7 @@ import {
 import {
   deriveAirdropRecordPDA,
   deriveAirdropRecordPDALegacy,
+  ethAddressToBytes,
 } from '../onchain/pda.js';
 import logger from '../utils/logger.js';
 
@@ -326,7 +327,7 @@ export async function executeAirdrop(
   if (nonMigratable > 0) {
     logger.warn(
       { nonMigratable },
-      'Legacy 99-byte records found. These use an older schema and cannot be migrated via --migrate. They will not block the airdrop.'
+      'Legacy 99-byte records found. These use an older schema and cannot be migrated via --migrate. They are excluded from snapshot calculations and may require manual closure/settlement.'
     );
   }
 
@@ -776,11 +777,13 @@ export async function executeMigration(
     );
 
     try {
+      const canonicalEthBytes = ethAddressToBytes(ethAddress);
       const instruction = createMigrateRecordInstruction(
         config.airdropTrackerProgramId,
         payer.publicKey,
         oldPda,
-        newPda
+        newPda,
+        canonicalEthBytes
       );
       const transaction = new Transaction().add(instruction);
       await sendAndConfirmTransaction(connection, transaction, [payer], {

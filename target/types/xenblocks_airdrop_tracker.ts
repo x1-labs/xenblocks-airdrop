@@ -432,7 +432,9 @@ export type XenblocksAirdropTracker = {
       "name": "migrateRecord",
       "docs": [
         "Migrate a V1 airdrop record to V2 (ETH-only PDA)",
-        "Copies all fields from old_record to new_record, then closes old_record"
+        "Copies all fields from old_record to new_record, then closes old_record.",
+        "Accepts canonical (lowercased) ETH address for V2 PDA derivation so that",
+        "mixed-case V1 records produce the same PDA the client expects."
       ],
       "discriminator": [
         11,
@@ -480,7 +482,17 @@ export type XenblocksAirdropTracker = {
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "canonicalEth",
+          "type": {
+            "array": [
+              "u8",
+              42
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "updateRecord",
@@ -726,6 +738,11 @@ export type XenblocksAirdropTracker = {
       "code": 6001,
       "name": "unauthorized",
       "msg": "Unauthorized: signer is not the authority"
+    },
+    {
+      "code": 6002,
+      "name": "ethAddressMismatch",
+      "msg": "Canonical ETH address does not match lowercased old record"
     }
   ],
   "types": [

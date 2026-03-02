@@ -253,12 +253,22 @@ pub mod xenblocks_airdrop_tracker {
     }
 
     /// Migrate a V1 airdrop record to V2 (ETH-only PDA)
-    /// Copies all fields from old_record to new_record, then closes old_record
-    pub fn migrate_record(ctx: Context<MigrateRecord>) -> Result<()> {
+    /// Copies all fields from old_record to new_record, then closes old_record.
+    /// Accepts canonical (lowercased) ETH address for V2 PDA derivation so that
+    /// mixed-case V1 records produce the same PDA the client expects.
+    pub fn migrate_record(ctx: Context<MigrateRecord>, canonical_eth: [u8; 42]) -> Result<()> {
         let old = &ctx.accounts.old_record;
+
+        // Validate canonical_eth is the lowercased form of old_record.eth_address
+        let mut lowered = old.eth_address;
+        for byte in lowered.iter_mut() {
+            *byte = byte.to_ascii_lowercase();
+        }
+        require!(canonical_eth == lowered, ErrorCode::EthAddressMismatch);
+
         let new = &mut ctx.accounts.new_record;
 
-        new.eth_address = old.eth_address;
+        new.eth_address = canonical_eth;
         new.xnm_airdropped = old.xnm_airdropped;
         new.xblk_airdropped = old.xblk_airdropped;
         new.xuni_airdropped = old.xuni_airdropped;
@@ -269,7 +279,7 @@ pub mod xenblocks_airdrop_tracker {
 
         msg!(
             "Migrated airdrop record from V1 to V2 for eth: {:?}",
-            &old.eth_address[..6]
+            &canonical_eth[..6]
         );
         Ok(())
     }
@@ -484,6 +494,7 @@ pub struct CloseRecordV2<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(canonical_eth: [u8; 42])]
 pub struct MigrateRecord<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -513,8 +524,8 @@ pub struct MigrateRecord<'info> {
         space = 8 + AirdropRecordV2::INIT_SPACE,
         seeds = [
             b"airdrop_record_v2",
-            &old_record.eth_address[..21],
-            &old_record.eth_address[21..42],
+            &canonical_eth[..21],
+            &canonical_eth[21..42],
         ],
         bump
     )]
@@ -605,4 +616,6 @@ pub enum ErrorCode {
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
+    #[msg("Canonical ETH address does not match lowercased old record")]
+    EthAddressMismatch,
 }
