@@ -63,6 +63,23 @@ export type XenblocksAirdropTracker = {
           "signer": true
         },
         {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "airdropRecord",
           "writable": true
         }
@@ -208,6 +225,23 @@ export type XenblocksAirdropTracker = {
           "signer": true
         },
         {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "airdropRecord",
           "writable": true
         },
@@ -311,6 +345,23 @@ export type XenblocksAirdropTracker = {
           "signer": true
         },
         {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "airdropRecord",
           "writable": true
         },
@@ -400,6 +451,23 @@ export type XenblocksAirdropTracker = {
           "signer": true
         },
         {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "oldRecord",
           "writable": true
         },
@@ -480,6 +548,23 @@ export type XenblocksAirdropTracker = {
           "name": "authority",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "airdropRecord",
