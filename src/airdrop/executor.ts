@@ -27,6 +27,7 @@ import {
 import {
   fetchAllMultiTokenSnapshots,
   fetchAllLegacyRecords,
+  countLegacyRecords,
   makeSnapshotKey,
   createOnChainRun,
   updateOnChainRunTotals,
@@ -308,7 +309,22 @@ export async function executeAirdrop(
     miners = allMiners;
   }
 
-  // Fetch on-chain snapshots once (for both tokens)
+  // Check for unmigrated legacy records
+  const legacyCount = await countLegacyRecords(
+    connection,
+    config.airdropTrackerProgramId
+  );
+  if (legacyCount > 0) {
+    logger.fatal(
+      { legacyCount },
+      'Unmigrated V1 records found. Run with --migrate first to migrate them to V2.'
+    );
+    throw new Error(
+      `Cannot run airdrop: ${legacyCount} unmigrated V1 records exist. Run --migrate first.`
+    );
+  }
+
+  // Fetch on-chain snapshots (V2 records only)
   logger.info('Fetching on-chain snapshots...');
   const snapshots = await fetchAllMultiTokenSnapshots(
     connection,

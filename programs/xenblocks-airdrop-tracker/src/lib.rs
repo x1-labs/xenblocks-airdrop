@@ -468,6 +468,13 @@ pub struct MigrateRecord<'info> {
     pub authority: Signer<'info>,
 
     #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
         mut,
         close = authority,
         seeds = [

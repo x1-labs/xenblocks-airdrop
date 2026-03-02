@@ -286,7 +286,8 @@ export async function fetchAllMultiTokenSnapshots(
     filters: [],
   });
 
-  // First pass: process V2 records (123 bytes) which take priority
+  // Process only V2 records (123 bytes)
+  // V1 records are NOT included — run --migrate first to convert them
   for (const { account } of accounts) {
     if (account.data.length !== AIRDROP_RECORD_V2_SIZE) {
       continue;
@@ -309,37 +310,35 @@ export async function fetchAllMultiTokenSnapshots(
     }
   }
 
-  // Second pass: process legacy records (155 and 99 bytes) only if no V2 record exists
-  for (const { account } of accounts) {
-    const dataLen = account.data.length;
-    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
-      continue;
-    }
-
-    try {
-      const record = deserializeAirdropRecord(account.data);
-      const ethAddressBytes = record.ethAddress.filter(b => b !== 0);
-      const ethAddress = String.fromCharCode(...ethAddressBytes);
-
-      const key = makeSnapshotKey(ethAddress);
-      if (!snapshots.has(key)) {
-        snapshots.set(key, {
-          xnmAirdropped: record.xnmAirdropped,
-          xblkAirdropped: record.xblkAirdropped,
-          xuniAirdropped: record.xuniAirdropped,
-          nativeAirdropped: record.nativeAirdropped,
-        });
-      }
-    } catch {
-      // Skip malformed accounts
-    }
-  }
-
   return snapshots;
 }
 
 /**
- * Fetch all legacy airdrop records (155 or 99 byte accounts)
+ * Count unmigrated legacy records (155 or 99 byte accounts)
+ * Used to check if migration is needed before running airdrop
+ */
+export async function countLegacyRecords(
+  connection: Connection,
+  programId: PublicKey
+): Promise<number> {
+  const accounts = await connection.getProgramAccounts(programId, {
+    filters: [],
+  });
+
+  let count = 0;
+  for (const { account } of accounts) {
+    const dataLen = account.data.length;
+    if (dataLen === AIRDROP_RECORD_SIZE || dataLen === AIRDROP_RECORD_LEGACY_SIZE) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Fetch all migratable legacy airdrop records (155 byte accounts only)
+ * 99-byte legacy accounts use an older schema incompatible with on-chain migrate_record
  * Returns deserialized AirdropRecord array for migration purposes
  */
 export async function fetchAllLegacyRecords(
@@ -353,8 +352,7 @@ export async function fetchAllLegacyRecords(
   const records: AirdropRecord[] = [];
 
   for (const { account } of accounts) {
-    const dataLen = account.data.length;
-    if (dataLen !== AIRDROP_RECORD_SIZE && dataLen !== AIRDROP_RECORD_LEGACY_SIZE) {
+    if (account.data.length !== AIRDROP_RECORD_SIZE) {
       continue;
     }
 
@@ -582,12 +580,15 @@ export function createMigrateRecordInstruction(
   oldRecord: PublicKey,
   newRecord: PublicKey
 ): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+
   // Anchor discriminator for "migrate_record"
   const discriminator = Buffer.from([11, 152, 11, 75, 10, 158, 213, 126]);
 
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
       { pubkey: oldRecord, isSigner: false, isWritable: true },
       { pubkey: newRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
