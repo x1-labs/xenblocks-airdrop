@@ -78,7 +78,12 @@ describe('calculateDeltas', () => {
 
   it('should preserve ETH address and API amount in results', () => {
     const miners: Miner[] = [
-      { account: '0xabcdef123456', solAddress: 'wallet1', xnm: '1.5E+18', xblk: '0' },
+      {
+        account: '0xabcdef123456',
+        solAddress: 'wallet1',
+        xnm: '1.5E+18',
+        xblk: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>();
 

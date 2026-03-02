@@ -34,10 +34,11 @@ function extractErrorDetails(error: unknown): string {
 
     if (logs && logs.length > 0) {
       // Find the most relevant error log
-      const errorLog = logs.find(log =>
-        log.includes('Error') ||
-        log.includes('failed') ||
-        log.includes('insufficient')
+      const errorLog = logs.find(
+        (log) =>
+          log.includes('Error') ||
+          log.includes('failed') ||
+          log.includes('insufficient')
       );
       if (errorLog) {
         details += ` | Log: ${errorLog}`;
@@ -46,7 +47,8 @@ function extractErrorDetails(error: unknown): string {
 
     // Decode common error codes
     if (message.includes('IllegalOwner')) {
-      details = 'IllegalOwner: Recipient account is owned by wrong program (possibly a PDA or system account)';
+      details =
+        'IllegalOwner: Recipient account is owned by wrong program (possibly a PDA or system account)';
     } else if (message.includes('AccountNotInitialized')) {
       details = 'AccountNotInitialized: On-chain record does not exist';
     } else if (message.includes('InsufficientFunds')) {
@@ -54,9 +56,11 @@ function extractErrorDetails(error: unknown): string {
     } else if (message.includes('0x1')) {
       details = 'InsufficientFunds: Token account has insufficient balance';
     } else if (message.includes('0xbc4')) {
-      details = 'AccountNotInitialized (0xbc4): Airdrop record PDA not initialized';
+      details =
+        'AccountNotInitialized (0xbc4): Airdrop record PDA not initialized';
     } else if (message.includes('0xbbb')) {
-      details = 'AccountDidNotDeserialize (0xbbb): Account data format mismatch';
+      details =
+        'AccountDidNotDeserialize (0xbbb): Account data format mismatch';
     }
 
     return details;
@@ -71,7 +75,7 @@ function extractErrorDetails(error: unknown): string {
     if (!message || message === '') {
       if (stack) {
         // Get first meaningful line from stack
-        const stackLines = stack.split('\n').filter(l => l.trim());
+        const stackLines = stack.split('\n').filter((l) => l.trim());
         const errorType = stackLines[0] || name || 'Error';
         return `${errorType} (no message)`;
       }
@@ -219,11 +223,16 @@ export async function simulateAndEstimateFee(
     sigVerify: false,
   });
 
-  logger.trace({
-    unitsConsumed: simulation.value.unitsConsumed,
-    logsLength: simulation.value.logs?.length,
-    ...(simulation.value.err && { err: JSON.stringify(simulation.value.err) }),
-  }, 'Simulation result');
+  logger.trace(
+    {
+      unitsConsumed: simulation.value.unitsConsumed,
+      logsLength: simulation.value.logs?.length,
+      ...(simulation.value.err && {
+        err: JSON.stringify(simulation.value.err),
+      }),
+    },
+    'Simulation result'
+  );
 
   if (simulation.value.err) {
     logger.warn(
@@ -242,11 +251,14 @@ export async function simulateAndEstimateFee(
     Math.ceil(Number(baseFee) * feeBufferMultiplier)
   );
 
-  logger.trace({
-    unitsConsumed,
-    baseFee: baseFee.toString(),
-    feeWithBuffer: feeWithBuffer.toString(),
-  }, 'Fee calculation');
+  logger.trace(
+    {
+      unitsConsumed,
+      baseFee: baseFee.toString(),
+      feeWithBuffer: feeWithBuffer.toString(),
+    },
+    'Fee calculation'
+  );
 
   return {
     fee: baseFee,
@@ -393,7 +405,7 @@ export async function batchTransferTokens(
 
     // Batch check which accounts exist
     const accountInfos = await connection.getMultipleAccountsInfo(ataAddresses);
-    const atasToCreate = accountInfos.filter(info => !info).length;
+    const atasToCreate = accountInfos.filter((info) => !info).length;
 
     const transaction = new Transaction();
 
@@ -429,12 +441,15 @@ export async function batchTransferTokens(
       transaction.add(instruction);
     }
 
-    logger.trace({
-      atasToCreate,
-      transfers: items.length,
-      recordInstructions: recordUpdateInstructions.length,
-      totalInstructions: transaction.instructions.length,
-    }, 'Building transaction');
+    logger.trace(
+      {
+        atasToCreate,
+        transfers: items.length,
+        recordInstructions: recordUpdateInstructions.length,
+        totalInstructions: transaction.instructions.length,
+      },
+      'Building transaction'
+    );
 
     // Simulate and estimate fee
     const feeEstimate = await simulateAndEstimateFee(
@@ -516,13 +531,19 @@ export async function batchTransferTokens(
   } catch (error) {
     const errorMessage = extractErrorDetails(error);
     // Log full error details at debug level for troubleshooting
-    logger.debug({
-      errorMessage,
-      errorType: error?.constructor?.name,
-      errorName: error instanceof Error ? error.name : undefined,
-      errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join(' | ') : undefined,
-      rawError: error instanceof Error ? undefined : error,
-    }, 'Batch transfer error details');
+    logger.debug(
+      {
+        errorMessage,
+        errorType: error?.constructor?.name,
+        errorName: error instanceof Error ? error.name : undefined,
+        errorStack:
+          error instanceof Error
+            ? error.stack?.split('\n').slice(0, 3).join(' | ')
+            : undefined,
+        rawError: error instanceof Error ? undefined : error,
+      },
+      'Batch transfer error details'
+    );
     return {
       success: false,
       errorMessage,
@@ -547,16 +568,20 @@ export async function estimateTotalFees(
   // Calculate how many new ATAs we expect to create
   // Recipients with existing records already have ATAs from prior airdrops
   const newRecipients = totalRecipients - existingRecordCount;
-  const ataCreationRatio = totalRecipients > 0 ? newRecipients / totalRecipients : 1;
+  const ataCreationRatio =
+    totalRecipients > 0 ? newRecipients / totalRecipients : 1;
   const expectedAtasPerBatch = Math.ceil(batchSize * ataCreationRatio);
 
-  logger.trace({
-    totalRecipients,
-    existingRecordCount,
-    newRecipients,
-    ataCreationRatio: ataCreationRatio.toFixed(2),
-    expectedAtasPerBatch,
-  }, 'Fee estimation parameters');
+  logger.trace(
+    {
+      totalRecipients,
+      existingRecordCount,
+      newRecipients,
+      ataCreationRatio: ataCreationRatio.toFixed(2),
+      expectedAtasPerBatch,
+    },
+    'Fee estimation parameters'
+  );
 
   // Create a sample transaction with realistic ATA creation count
   const sampleTransaction = new Transaction();
@@ -609,7 +634,9 @@ export async function estimateTotalFees(
   // Add ATA creation CU to the estimate
   const totalCU = feeEstimate.unitsConsumed + ataCreationCU;
   const lamportsPerCU = 10;
-  const perBatchFee = BigInt(Math.ceil(totalCU * lamportsPerCU * feeBufferMultiplier));
+  const perBatchFee = BigInt(
+    Math.ceil(totalCU * lamportsPerCU * feeBufferMultiplier)
+  );
 
   const numBatches = Math.ceil(totalRecipients / batchSize);
   const totalFee = perBatchFee * BigInt(numBatches);
@@ -686,7 +713,8 @@ export async function multiTokenTransfer(
     );
 
     // Check which ATAs exist
-    const [xnmAtaInfo, xblkAtaInfo, xuniAtaInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
+    const [xnmAtaInfo, xblkAtaInfo, xuniAtaInfo] =
+      await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
 
     // Create XNM ATA if needed and we have XNM to transfer
     if (!xnmAtaInfo && item.xnmAmount > 0n) {
@@ -785,17 +813,20 @@ export async function multiTokenTransfer(
       transaction.add(instruction);
     }
 
-    logger.trace({
-      xnmAtaExists: !!xnmAtaInfo,
-      xblkAtaExists: !!xblkAtaInfo,
-      xuniAtaExists: !!xuniAtaInfo,
-      xnmTransfer: item.xnmAmount > 0n,
-      xblkTransfer: item.xblkAmount > 0n,
-      xuniTransfer: item.xuniAmount > 0n,
-      nativeTransfer: item.nativeAmount > 0n,
-      recordInstructions: recordUpdateInstructions.length,
-      totalInstructions: transaction.instructions.length,
-    }, 'Building multi-token transaction');
+    logger.trace(
+      {
+        xnmAtaExists: !!xnmAtaInfo,
+        xblkAtaExists: !!xblkAtaInfo,
+        xuniAtaExists: !!xuniAtaInfo,
+        xnmTransfer: item.xnmAmount > 0n,
+        xblkTransfer: item.xblkAmount > 0n,
+        xuniTransfer: item.xuniAmount > 0n,
+        nativeTransfer: item.nativeAmount > 0n,
+        recordInstructions: recordUpdateInstructions.length,
+        totalInstructions: transaction.instructions.length,
+      },
+      'Building multi-token transaction'
+    );
 
     // Simulate and estimate fee
     const feeEstimate = await simulateAndEstimateFee(
@@ -813,11 +844,14 @@ export async function multiTokenTransfer(
 
     const priorityFee = parseInt(process.env.PRIORITY_FEE || '1000', 10);
 
-    logger.debug({
-      simulatedCU: feeEstimate.unitsConsumed,
-      computeUnitLimit,
-      priorityFeeMicroLamports: priorityFee,
-    }, 'Multi-token transaction compute budget');
+    logger.debug(
+      {
+        simulatedCU: feeEstimate.unitsConsumed,
+        computeUnitLimit,
+        priorityFeeMicroLamports: priorityFee,
+      },
+      'Multi-token transaction compute budget'
+    );
 
     // Rebuild transaction with compute budget instructions
     const finalTransaction = new Transaction();
@@ -858,80 +892,131 @@ export async function multiTokenTransfer(
     const errorMessage = extractErrorDetails(error);
 
     // Enhanced logging for debugging ownership/account issues
-    logger.debug({
-      errorMessage,
-      errorType: error?.constructor?.name,
-      recipient: item.recipientAddress,
-      ethAddress: item.ethAddress,
-      amounts: {
-        xnm: item.xnmAmount.toString(),
-        xblk: item.xblkAmount.toString(),
-        xuni: item.xuniAmount.toString(),
-        native: item.nativeAmount.toString(),
+    logger.debug(
+      {
+        errorMessage,
+        errorType: error?.constructor?.name,
+        recipient: item.recipientAddress,
+        ethAddress: item.ethAddress,
+        amounts: {
+          xnm: item.xnmAmount.toString(),
+          xblk: item.xblkAmount.toString(),
+          xuni: item.xuniAmount.toString(),
+          native: item.nativeAmount.toString(),
+        },
       },
-    }, 'Multi-token transfer error');
+      'Multi-token transfer error'
+    );
 
     // Log detailed account info for IllegalOwner errors
     if (errorMessage.includes('IllegalOwner')) {
-      logger.error({
-        recipient: item.recipientAddress,
-        ethAddress: item.ethAddress,
-        payer: payer.publicKey.toBase58(),
-        xnmMint: xnmConfig.mint.toBase58(),
-        xblkMint: xblkConfig.mint.toBase58(),
-        xuniMint: xuniConfig.mint.toBase58(),
-        xnmProgramId: xnmConfig.programId.toBase58(),
-        xblkProgramId: xblkConfig.programId.toBase58(),
-        xuniProgramId: xuniConfig.programId.toBase58(),
-      }, 'IllegalOwner error - account details');
+      logger.error(
+        {
+          recipient: item.recipientAddress,
+          ethAddress: item.ethAddress,
+          payer: payer.publicKey.toBase58(),
+          xnmMint: xnmConfig.mint.toBase58(),
+          xblkMint: xblkConfig.mint.toBase58(),
+          xuniMint: xuniConfig.mint.toBase58(),
+          xnmProgramId: xnmConfig.programId.toBase58(),
+          xblkProgramId: xblkConfig.programId.toBase58(),
+          xuniProgramId: xuniConfig.programId.toBase58(),
+        },
+        'IllegalOwner error - account details'
+      );
 
       // Try to fetch and log the actual account states for debugging
       try {
-        const xnmAta = getAssociatedTokenAddressSync(xnmConfig.mint, new PublicKey(item.recipientAddress), true, xnmConfig.programId);
-        const xblkAta = getAssociatedTokenAddressSync(xblkConfig.mint, new PublicKey(item.recipientAddress), true, xblkConfig.programId);
-        const xuniAta = getAssociatedTokenAddressSync(xuniConfig.mint, new PublicKey(item.recipientAddress), true, xuniConfig.programId);
+        const xnmAta = getAssociatedTokenAddressSync(
+          xnmConfig.mint,
+          new PublicKey(item.recipientAddress),
+          true,
+          xnmConfig.programId
+        );
+        const xblkAta = getAssociatedTokenAddressSync(
+          xblkConfig.mint,
+          new PublicKey(item.recipientAddress),
+          true,
+          xblkConfig.programId
+        );
+        const xuniAta = getAssociatedTokenAddressSync(
+          xuniConfig.mint,
+          new PublicKey(item.recipientAddress),
+          true,
+          xuniConfig.programId
+        );
 
-        const payerXnmAta = getAssociatedTokenAddressSync(xnmConfig.mint, payer.publicKey, false, xnmConfig.programId);
-        const payerXblkAta = getAssociatedTokenAddressSync(xblkConfig.mint, payer.publicKey, false, xblkConfig.programId);
-        const payerXuniAta = getAssociatedTokenAddressSync(xuniConfig.mint, payer.publicKey, false, xuniConfig.programId);
+        const payerXnmAta = getAssociatedTokenAddressSync(
+          xnmConfig.mint,
+          payer.publicKey,
+          false,
+          xnmConfig.programId
+        );
+        const payerXblkAta = getAssociatedTokenAddressSync(
+          xblkConfig.mint,
+          payer.publicKey,
+          false,
+          xblkConfig.programId
+        );
+        const payerXuniAta = getAssociatedTokenAddressSync(
+          xuniConfig.mint,
+          payer.publicKey,
+          false,
+          xuniConfig.programId
+        );
 
-        logger.error({
-          derivedRecipientAtas: {
-            xnm: xnmAta.toBase58(),
-            xblk: xblkAta.toBase58(),
-            xuni: xuniAta.toBase58(),
+        logger.error(
+          {
+            derivedRecipientAtas: {
+              xnm: xnmAta.toBase58(),
+              xblk: xblkAta.toBase58(),
+              xuni: xuniAta.toBase58(),
+            },
+            derivedPayerAtas: {
+              xnm: payerXnmAta.toBase58(),
+              xblk: payerXblkAta.toBase58(),
+              xuni: payerXuniAta.toBase58(),
+            },
           },
-          derivedPayerAtas: {
-            xnm: payerXnmAta.toBase58(),
-            xblk: payerXblkAta.toBase58(),
-            xuni: payerXuniAta.toBase58(),
-          },
-        }, 'IllegalOwner error - derived ATA addresses');
+          'IllegalOwner error - derived ATA addresses'
+        );
 
         // Fetch actual account info
-        const [recipientXnmInfo, recipientXblkInfo, recipientXuniInfo] = await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
-        const [payerXnmInfo, payerXblkInfo, payerXuniInfo] = await connection.getMultipleAccountsInfo([payerXnmAta, payerXblkAta, payerXuniAta]);
+        const [recipientXnmInfo, recipientXblkInfo, recipientXuniInfo] =
+          await connection.getMultipleAccountsInfo([xnmAta, xblkAta, xuniAta]);
+        const [payerXnmInfo, payerXblkInfo, payerXuniInfo] =
+          await connection.getMultipleAccountsInfo([
+            payerXnmAta,
+            payerXblkAta,
+            payerXuniAta,
+          ]);
 
-        logger.error({
-          recipientAtaStatus: {
-            xnmExists: !!recipientXnmInfo,
-            xnmOwner: recipientXnmInfo?.owner?.toBase58(),
-            xblkExists: !!recipientXblkInfo,
-            xblkOwner: recipientXblkInfo?.owner?.toBase58(),
-            xuniExists: !!recipientXuniInfo,
-            xuniOwner: recipientXuniInfo?.owner?.toBase58(),
+        logger.error(
+          {
+            recipientAtaStatus: {
+              xnmExists: !!recipientXnmInfo,
+              xnmOwner: recipientXnmInfo?.owner?.toBase58(),
+              xblkExists: !!recipientXblkInfo,
+              xblkOwner: recipientXblkInfo?.owner?.toBase58(),
+              xuniExists: !!recipientXuniInfo,
+              xuniOwner: recipientXuniInfo?.owner?.toBase58(),
+            },
+            payerAtaStatus: {
+              xnmExists: !!payerXnmInfo,
+              xnmOwner: payerXnmInfo?.owner?.toBase58(),
+              xblkExists: !!payerXblkInfo,
+              xblkOwner: payerXblkInfo?.owner?.toBase58(),
+              xuniExists: !!payerXuniInfo,
+              xuniOwner: payerXuniInfo?.owner?.toBase58(),
+            },
           },
-          payerAtaStatus: {
-            xnmExists: !!payerXnmInfo,
-            xnmOwner: payerXnmInfo?.owner?.toBase58(),
-            xblkExists: !!payerXblkInfo,
-            xblkOwner: payerXblkInfo?.owner?.toBase58(),
-            xuniExists: !!payerXuniInfo,
-            xuniOwner: payerXuniInfo?.owner?.toBase58(),
-          },
-        }, 'IllegalOwner error - actual account states');
+          'IllegalOwner error - actual account states'
+        );
       } catch (debugError) {
-        logger.warn({ debugError: String(debugError) }, 'Failed to fetch account info for debugging');
+        logger.warn(
+          { debugError: String(debugError) },
+          'Failed to fetch account info for debugging'
+        );
       }
     }
 

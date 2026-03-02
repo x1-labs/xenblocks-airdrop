@@ -55,7 +55,6 @@ export function deriveAirdropRecordPDA(
   );
 }
 
-
 /**
  * Convert an ETH address string to a 42-byte array for the program
  * Normalizes to lowercase for consistent on-chain storage.

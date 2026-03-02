@@ -153,7 +153,11 @@ export async function getOnChainAmounts(
   connection: Connection,
   programId: PublicKey,
   ethAddress: string
-): Promise<{ xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint } | null> {
+): Promise<{
+  xnmAirdropped: bigint;
+  xblkAirdropped: bigint;
+  xuniAirdropped: bigint;
+} | null> {
   const [pda] = deriveAirdropRecordPDA(programId, ethAddress);
   const accountInfo = await connection.getAccountInfo(pda);
 
@@ -184,8 +188,26 @@ export function makeSnapshotKey(ethAddress: string): string {
 export async function fetchAllMultiTokenSnapshots(
   connection: Connection,
   programId: PublicKey
-): Promise<Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>> {
-  const snapshots = new Map<string, { xnmAirdropped: bigint; xblkAirdropped: bigint; xuniAirdropped: bigint; nativeAirdropped: bigint }>();
+): Promise<
+  Map<
+    string,
+    {
+      xnmAirdropped: bigint;
+      xblkAirdropped: bigint;
+      xuniAirdropped: bigint;
+      nativeAirdropped: bigint;
+    }
+  >
+> {
+  const snapshots = new Map<
+    string,
+    {
+      xnmAirdropped: bigint;
+      xblkAirdropped: bigint;
+      xuniAirdropped: bigint;
+      nativeAirdropped: bigint;
+    }
+  >();
 
   const accounts = await connection.getProgramAccounts(programId, {
     filters: [{ dataSize: AIRDROP_RECORD_V2_SIZE }],

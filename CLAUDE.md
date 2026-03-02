@@ -10,36 +10,34 @@ XNM Airdrop is a Solana-based multi-token distribution system that rewards miner
 
 ### Install Dependencies
 ```bash
-npm install
+bun install
 ```
 
 ### Run the Airdrop
 ```bash
-# Development (TypeScript with tsx)
-npm run dev
+# Development (bun runs TypeScript natively)
+bun run dev
 
 # Production (build first)
-npm run build
-npm start
+bun run build
+bun start
 ```
 
 ### Build Solana Program
 ```bash
-anchor build
+bun run build:program
 ```
 
-### Linting & Formatting
+### Linting, Formatting, Typechecking & Testing
 ```bash
-npm run lint
-npm run lint:fix
-npm run format
-npm run format:check
-```
-
-### Testing
-```bash
-npm test
-npm run test:watch
+bun run checks              # Run all checks (lint, format:check, typecheck, test)
+bun run lint                # ESLint
+bun run lint:fix            # ESLint with auto-fix
+bun run format              # Prettier (write)
+bun run format:check        # Prettier (check only)
+bun run typecheck           # tsc --noEmit
+bun test                    # Run tests
+bun run test:watch          # Run tests in watch mode
 ```
 
 ## Architecture

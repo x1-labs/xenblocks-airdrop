@@ -1,4 +1,9 @@
-import { Miner, DeltaResult, MultiTokenDelta, OnChainSnapshot } from './types.js';
+import {
+  Miner,
+  DeltaResult,
+  MultiTokenDelta,
+  OnChainSnapshot,
+} from './types.js';
 import { convertApiAmountToTokenAmount } from '../utils/format.js';
 import { TokenType, NativeAirdropConfig } from '../config.js';
 import { makeSnapshotKey } from '../onchain/client.js';
@@ -104,7 +109,12 @@ export function calculateMultiTokenDeltas(
     }
 
     // Only include if at least one token has positive delta OR eligible for native airdrop
-    if (xnmDelta > 0n || xblkDelta > 0n || xuniDelta > 0n || nativeAmount > 0n) {
+    if (
+      xnmDelta > 0n ||
+      xblkDelta > 0n ||
+      xuniDelta > 0n ||
+      nativeAmount > 0n
+    ) {
       results.push({
         walletAddress: miner.solAddress,
         ethAddress: miner.account,
