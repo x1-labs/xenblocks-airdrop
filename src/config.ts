@@ -119,16 +119,18 @@ function getTokenConfig(
 }
 
 export function loadConfig(): Config {
-  const requiredVars = [
-    'AIRDROP_TRACKER_PROGRAM_ID',
-    'RPC_ENDPOINT',
-    'KEYPAIR_PATH',
-  ];
+  const requiredVars = ['AIRDROP_TRACKER_PROGRAM_ID', 'RPC_ENDPOINT'];
 
   for (const varName of requiredVars) {
     if (!process.env[varName]) {
       throw new Error(`Missing required environment variable: ${varName}`);
     }
+  }
+
+  if (!process.env.KEYPAIR_JSON && !process.env.KEYPAIR_PATH) {
+    throw new Error(
+      'Must set either KEYPAIR_JSON or KEYPAIR_PATH environment variable'
+    );
   }
 
   // Token program: 'token' (default) or 'token-2022'
