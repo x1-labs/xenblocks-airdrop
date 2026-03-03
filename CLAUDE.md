@@ -87,7 +87,8 @@ bun run test:watch          # Run tests in watch mode
 
 All configuration is via environment variables (see `.env.example`):
 - `RPC_ENDPOINT`: Solana RPC URL
-- `KEYPAIR_PATH`: Path to payer keypair
+- `KEYPAIR_PATH`: Path to payer keypair file
+- `KEYPAIR_JSON`: Inline keypair JSON array (alternative to `KEYPAIR_PATH`, useful in Docker/CI)
 - `AIRDROP_TRACKER_PROGRAM_ID`: Deployed program ID
 - Token mints: `XNM_TOKEN_MINT`, `XBLK_TOKEN_MINT`, `XUNI_TOKEN_MINT`
 - `TOKEN_TYPES`: Which tokens to airdrop (comma-separated)
@@ -119,3 +120,28 @@ Response includes:
 - Creates ATAs for recipients as needed
 - Configurable decimals per token
 - Optional native token (XNT) airdrop for first-time recipients
+
+### Docker
+
+Multi-stage Dockerfile using `oven/bun:1-alpine`:
+1. **install** — production dependencies only
+2. **build** — full deps + `tsc` compile
+3. **final** — production `node_modules` + compiled `dist/`
+
+```bash
+# Build
+docker build -t xenblocks-airdrop .
+
+# Run with env file and keypair file
+docker run --env-file .env -v /path/to/keypair.json:/app/keypair.json xenblocks-airdrop
+
+# Run with inline keypair (no file mount needed)
+docker run --env-file .env -e KEYPAIR_JSON='[1,2,3,...]' xenblocks-airdrop
+```
+
+Image is published to `ghcr.io/x1-labs/xenblocks-airdrop` via the `publish-docker.yml` workflow.
+
+### CI/CD
+
+- **`ci.yml`**: Runs lint, format check, typecheck, and tests in parallel on PRs and pushes to main
+- **`publish-docker.yml`**: Builds and pushes Docker image to GHCR on pushes to main (when relevant files change), then triggers deployment via infrafc

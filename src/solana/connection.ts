@@ -16,13 +16,15 @@ export function getConnection(config: Config): Connection {
 }
 
 /**
- * Load and get the payer keypair
+ * Load and get the payer keypair.
+ * Reads from KEYPAIR_JSON env var (JSON array string) if set,
+ * otherwise falls back to reading from config.keypairPath.
  */
 export function getPayer(config: Config): Keypair {
   if (!payer) {
-    const keypairData = JSON.parse(
-      fs.readFileSync(config.keypairPath, 'utf-8')
-    );
+    const keypairJson = process.env.KEYPAIR_JSON;
+    const raw = keypairJson ?? fs.readFileSync(config.keypairPath, 'utf-8');
+    const keypairData = JSON.parse(raw);
     payer = Keypair.fromSecretKey(Uint8Array.from(keypairData));
   }
   return payer;
