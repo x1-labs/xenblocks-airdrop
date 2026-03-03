@@ -463,6 +463,33 @@ export function createInitializeAndUpdateInstruction(
   });
 }
 
+/**
+ * Create instruction to update the program authority
+ */
+export function createUpdateAuthorityInstruction(
+  programId: PublicKey,
+  authority: PublicKey,
+  newAuthority: PublicKey
+): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+
+  // Anchor discriminator for "update_authority"
+  const discriminator = Buffer.from([32, 46, 64, 28, 149, 75, 243, 88]);
+
+  const data = Buffer.alloc(discriminator.length + 32);
+  discriminator.copy(data, 0);
+  newAuthority.toBuffer().copy(data, 8);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: true },
+    ],
+    programId,
+    data,
+  });
+}
+
 // ============================================================================
 // High-Level Functions
 // ============================================================================
