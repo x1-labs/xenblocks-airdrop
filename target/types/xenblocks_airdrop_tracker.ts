@@ -294,6 +294,53 @@ export type XenblocksAirdropTracker = {
       "args": []
     },
     {
+      "name": "updateAuthority",
+      "docs": [
+        "Transfer authority to a new public key (current authority only)"
+      ],
+      "discriminator": [
+        32,
+        46,
+        64,
+        28,
+        149,
+        75,
+        243,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "newAuthority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "updateRecordV2",
       "docs": [
         "Update an existing airdrop record after a successful transfer"
