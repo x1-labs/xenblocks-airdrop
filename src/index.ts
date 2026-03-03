@@ -91,13 +91,23 @@ async function main(): Promise<void> {
             'Interval not yet elapsed, waiting'
           );
 
-          // Poll every 5 minutes until interval elapses
-          while (Date.now() - lastRunMs < config.interval) {
+          // Poll every 5 minutes until interval elapses,
+          // re-reading on-chain last run date each iteration
+          let currentLastRunMs = lastRunMs;
+          while (Date.now() - currentLastRunMs < config.interval) {
             const wait = Math.min(
               POLL_INTERVAL_MS,
-              config.interval - (Date.now() - lastRunMs)
+              config.interval - (Date.now() - currentLastRunMs)
             );
             await sleep(wait);
+
+            const refreshed = await getLastRunDate(
+              connection,
+              config.airdropTrackerProgramId
+            );
+            if (refreshed !== null) {
+              currentLastRunMs = Number(refreshed) * 1000;
+            }
           }
         }
       } else {
@@ -106,11 +116,14 @@ async function main(): Promise<void> {
 
       await executeAirdrop(connection, payer, config);
     } catch (error) {
-      logger.error({ error }, 'Airdrop run failed, will retry next interval');
+      logger.error({ error }, 'Airdrop run failed, will retry after backoff');
       // Wait before retrying to avoid tight error loops
       await sleep(POLL_INTERVAL_MS);
     }
   }
 }
 
-main();
+main().catch((error) => {
+  logger.fatal({ error }, 'Airdrop failed');
+  process.exit(1);
+});

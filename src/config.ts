@@ -72,8 +72,13 @@ export function parseDuration(input: string): number {
 function parseInterval(): number | null {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--interval' && i + 1 < args.length) {
-      return parseDuration(args[i + 1]);
+    if (args[i] === '--interval') {
+      if (i + 1 >= args.length) {
+        throw new Error(
+          'Missing value for --interval. Provide a duration like 30m, 12h, or 30d.'
+        );
+      }
+      return parseDuration(args[++i]);
     }
   }
   if (process.env.INTERVAL) {
