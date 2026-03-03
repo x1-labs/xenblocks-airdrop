@@ -37,9 +37,56 @@ export interface Config {
   feeBufferMultiplier: number;
   nativeAirdrop: NativeAirdropConfig;
   addressFilter: AddressFilter;
+  interval: number | null;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
+
+const DURATION_UNITS: Record<string, number> = {
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+};
+
+/**
+ * Parse a duration string like "30d", "12h", "30m" into milliseconds.
+ */
+export function parseDuration(input: string): number {
+  const normalized = input.trim().toLowerCase();
+  const match = normalized.match(/^(\d+)([mhd])$/);
+  if (!match) {
+    throw new Error(
+      `Invalid duration: "${input}". Use a number followed by m (minutes), h (hours), or d (days). Examples: 30m, 12h, 30d`
+    );
+  }
+  const value = parseInt(match[1], 10);
+  if (value <= 0) {
+    throw new Error('Duration must be greater than 0');
+  }
+  return value * DURATION_UNITS[match[2]];
+}
+
+/**
+ * Parse interval from --interval flag or AIRDROP_INTERVAL env var.
+ * CLI flag takes precedence. Returns duration in milliseconds or null.
+ */
+function parseInterval(): number | null {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--interval') {
+      if (i + 1 >= args.length) {
+        throw new Error(
+          'Missing value for --interval. Provide a duration like 30m, 12h, or 30d.'
+        );
+      }
+      return parseDuration(args[++i]);
+    }
+  }
+  if (process.env.AIRDROP_INTERVAL) {
+    return parseDuration(process.env.AIRDROP_INTERVAL);
+  }
+  return null;
+}
 
 /**
  * Parse --x1-address and --eth-address flags from process.argv
@@ -207,5 +254,6 @@ export function loadConfig(): Config {
       minXnmBalance: nativeAirdropMinXnm,
     },
     addressFilter: parseAddressFilter(),
+    interval: parseInterval(),
   };
 }

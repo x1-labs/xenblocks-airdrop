@@ -146,6 +146,27 @@ export async function getAirdropRun(
 }
 
 /**
+ * Fetch the run_date of the most recent AirdropRun.
+ * Returns the Unix timestamp (seconds) as a bigint, or null if no runs exist.
+ */
+export async function getLastRunDate(
+  connection: Connection,
+  programId: PublicKey
+): Promise<bigint | null> {
+  const state = await getGlobalState(connection, programId);
+  if (!state || state.runCounter === 0n) {
+    return null;
+  }
+
+  const run = await getAirdropRun(connection, programId, state.runCounter);
+  if (!run) {
+    return null;
+  }
+
+  return run.runDate;
+}
+
+/**
  * Fetch the on-chain airdrop amounts for a single wallet (V2, ETH-only PDA)
  * Returns all three token amounts
  */
