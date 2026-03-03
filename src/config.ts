@@ -52,7 +52,8 @@ const DURATION_UNITS: Record<string, number> = {
  * Parse a duration string like "30d", "12h", "30m" into milliseconds.
  */
 export function parseDuration(input: string): number {
-  const match = input.match(/^(\d+)([mhd])$/);
+  const normalized = input.trim().toLowerCase();
+  const match = normalized.match(/^(\d+)([mhd])$/);
   if (!match) {
     throw new Error(
       `Invalid duration: "${input}". Use a number followed by m (minutes), h (hours), or d (days). Examples: 30m, 12h, 30d`
@@ -66,7 +67,7 @@ export function parseDuration(input: string): number {
 }
 
 /**
- * Parse interval from --interval flag or INTERVAL env var.
+ * Parse interval from --interval flag or AIRDROP_INTERVAL env var.
  * CLI flag takes precedence. Returns duration in milliseconds or null.
  */
 function parseInterval(): number | null {
@@ -81,8 +82,8 @@ function parseInterval(): number | null {
       return parseDuration(args[++i]);
     }
   }
-  if (process.env.INTERVAL) {
-    return parseDuration(process.env.INTERVAL);
+  if (process.env.AIRDROP_INTERVAL) {
+    return parseDuration(process.env.AIRDROP_INTERVAL);
   }
   return null;
 }
