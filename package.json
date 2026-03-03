@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "bun src/index.ts",
+    "status": "bun src/status.ts",
     "build": "tsc",
     "build:program": "anchor build",
     "start": "bun dist/index.js",

@@ -59,9 +59,11 @@ export function formatTokenAmount(
   amount: bigint,
   decimals: number = 9
 ): string {
+  const negative = amount < 0n;
+  const abs = negative ? -amount : amount;
   const divisor = BigInt(10 ** decimals);
-  const wholePart = amount / divisor;
-  const fractionalPart = amount % divisor;
+  const wholePart = abs / divisor;
+  const fractionalPart = abs % divisor;
 
   // Pad fractional part with leading zeros if needed
   const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
@@ -69,8 +71,9 @@ export function formatTokenAmount(
   // Remove trailing zeros for cleaner display
   const trimmedFractional = fractionalStr.replace(/0+$/, '');
 
+  const prefix = negative ? '-' : '';
   if (trimmedFractional === '') {
-    return wholePart.toString();
+    return `${prefix}${wholePart}`;
   }
-  return `${wholePart}.${trimmedFractional}`;
+  return `${prefix}${wholePart}.${trimmedFractional}`;
 }
