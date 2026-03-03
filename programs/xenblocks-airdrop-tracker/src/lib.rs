@@ -145,6 +145,14 @@ pub mod xenblocks_airdrop_tracker {
         msg!("Closed airdrop record and reclaimed rent");
         Ok(())
     }
+
+    /// Transfer authority to a new public key (current authority only)
+    pub fn update_authority(ctx: Context<UpdateAuthority>, new_authority: Pubkey) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        msg!("Authority updated from {} to {}", state.authority, new_authority);
+        state.authority = new_authority;
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -289,6 +297,20 @@ pub struct CloseRecordV2<'info> {
         bump = airdrop_record.bump
     )]
     pub airdrop_record: Account<'info, AirdropRecordV2>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateAuthority<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
 }
 
 // ============================================================================
