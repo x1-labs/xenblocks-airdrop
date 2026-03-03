@@ -66,8 +66,8 @@ export function parseDuration(input: string): number {
 }
 
 /**
- * Parse --interval flag from process.argv.
- * Returns duration in milliseconds or null if not provided.
+ * Parse interval from --interval flag or INTERVAL env var.
+ * CLI flag takes precedence. Returns duration in milliseconds or null.
  */
 function parseInterval(): number | null {
   const args = process.argv.slice(2);
@@ -75,6 +75,9 @@ function parseInterval(): number | null {
     if (args[i] === '--interval' && i + 1 < args.length) {
       return parseDuration(args[i + 1]);
     }
+  }
+  if (process.env.INTERVAL) {
+    return parseDuration(process.env.INTERVAL);
   }
   return null;
 }
