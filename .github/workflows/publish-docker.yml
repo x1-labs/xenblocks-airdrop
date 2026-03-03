@@ -20,6 +20,7 @@ on:
   push:
     branches:
       - main
+      - docker-ci
     paths:
       - "src/**"
       - package.json
