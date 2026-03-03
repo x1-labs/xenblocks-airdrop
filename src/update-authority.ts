@@ -52,7 +52,9 @@ async function main() {
   }
 
   if (state.authority.equals(newAuthority)) {
-    console.error('\nNew authority is the same as current authority. Nothing to do.');
+    console.error(
+      '\nNew authority is the same as current authority. Nothing to do.'
+    );
     process.exit(0);
   }
 
