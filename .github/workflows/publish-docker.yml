@@ -98,11 +98,14 @@ jobs:
           repositories: infrafc
 
       - name: Trigger deployment
-        uses: x1-labs/infrafc/.github/actions/trigger-deploy@main
-        with:
-          service: xenblocks-airdrop
-          environment: production
-          image_tag: ${{ github.sha }}
-          commit_sha: ${{ github.sha }}
-          repo_url: ${{ github.server_url }}/${{ github.repository }}
-          token: ${{ steps.app-token.outputs.token }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh workflow run deploy-service.yml \
+            --repo x1-labs/infrafc \
+            --ref main \
+            -f service="xenblocks-airdrop" \
+            -f environment="production" \
+            -f image_tag="${{ github.sha }}" \
+            -f commit_sha="${{ github.sha }}" \
+            -f repo_url="${{ github.server_url }}/${{ github.repository }}"
