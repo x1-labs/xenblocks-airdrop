@@ -87,8 +87,12 @@ async function main(): Promise<void> {
 
   const fmt = (v: bigint) => formatTokenAmount(v, DECIMALS);
 
-  console.log(`\n  Token    API Total              Mint Supply            Delta                  Tracker Total          Pending (${perMinerDeltas.length} recipients)`);
-  console.log(`  -----    ---------              -----------            -----                  -------------          -------`);
+  console.log(
+    `\n  Token    API Total              Mint Supply            Delta                  Tracker Total          Pending (${perMinerDeltas.length} recipients)`
+  );
+  console.log(
+    `  -----    ---------              -----------            -----                  -------------          -------`
+  );
   console.log(
     `  XNM      ${fmt(apiXnm).padEnd(22)} ${fmt(supplyXnm).padEnd(22)} ${fmt(deltaXnm).padEnd(22)} ${fmt(trackerXnm).padEnd(22)} ${fmt(pending.totalXnm)}`
   );
