@@ -37,9 +37,47 @@ export interface Config {
   feeBufferMultiplier: number;
   nativeAirdrop: NativeAirdropConfig;
   addressFilter: AddressFilter;
+  interval: number | null;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
+
+const DURATION_UNITS: Record<string, number> = {
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+};
+
+/**
+ * Parse a duration string like "30d", "12h", "30m" into milliseconds.
+ */
+export function parseDuration(input: string): number {
+  const match = input.match(/^(\d+)([mhd])$/);
+  if (!match) {
+    throw new Error(
+      `Invalid duration: "${input}". Use a number followed by m (minutes), h (hours), or d (days). Examples: 30m, 12h, 30d`
+    );
+  }
+  const value = parseInt(match[1], 10);
+  if (value <= 0) {
+    throw new Error('Duration must be greater than 0');
+  }
+  return value * DURATION_UNITS[match[2]];
+}
+
+/**
+ * Parse --interval flag from process.argv.
+ * Returns duration in milliseconds or null if not provided.
+ */
+function parseInterval(): number | null {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--interval' && i + 1 < args.length) {
+      return parseDuration(args[i + 1]);
+    }
+  }
+  return null;
+}
 
 /**
  * Parse --x1-address and --eth-address flags from process.argv
@@ -207,5 +245,6 @@ export function loadConfig(): Config {
       minXnmBalance: nativeAirdropMinXnm,
     },
     addressFilter: parseAddressFilter(),
+    interval: parseInterval(),
   };
 }
