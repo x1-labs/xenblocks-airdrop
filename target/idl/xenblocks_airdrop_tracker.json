@@ -8,6 +8,69 @@
   },
   "instructions": [
     {
+      "name": "acquire_lock",
+      "docs": [
+        "Acquire the airdrop lock (or override if expired)"
+      ],
+      "discriminator": [
+        101,
+        3,
+        93,
+        16,
+        193,
+        193,
+        148,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "timeout_seconds",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "close_record_v2",
       "docs": [
         "Close an airdrop record and reclaim rent (admin only)"
@@ -183,6 +246,68 @@
       ]
     },
     {
+      "name": "initialize_lock",
+      "docs": [
+        "Initialize the airdrop lock PDA (one-time setup)"
+      ],
+      "discriminator": [
+        182,
+        214,
+        195,
+        105,
+        58,
+        73,
+        81,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_record_v2",
       "docs": [
         "Initialize a new airdrop record keyed by ETH address"
@@ -283,6 +408,64 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_lock",
+      "docs": [
+        "Release the airdrop lock (holder only)"
+      ],
+      "discriminator": [
+        241,
+        251,
+        248,
+        8,
+        198,
+        190,
+        195,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -470,6 +653,19 @@
   ],
   "accounts": [
     {
+      "name": "AirdropLock",
+      "discriminator": [
+        90,
+        243,
+        247,
+        96,
+        76,
+        217,
+        120,
+        216
+      ]
+    },
+    {
       "name": "AirdropRecordV2",
       "discriminator": [
         246,
@@ -519,9 +715,67 @@
       "code": 6001,
       "name": "Unauthorized",
       "msg": "Unauthorized: signer is not the authority"
+    },
+    {
+      "code": 6002,
+      "name": "LockHeld",
+      "msg": "Lock is currently held by another process"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidTimeout",
+      "msg": "Invalid timeout: must be between 60 and 3600 seconds"
+    },
+    {
+      "code": 6004,
+      "name": "LockNotHeld",
+      "msg": "Lock is not held by the caller"
     }
   ],
   "types": [
+    {
+      "name": "AirdropLock",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lock_holder",
+            "docs": [
+              "Public key of the current lock holder"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "locked_at",
+            "docs": [
+              "Unix timestamp when the lock was acquired"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "timeout_seconds",
+            "docs": [
+              "Lock timeout duration in seconds"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "run_id",
+            "docs": [
+              "Associated run ID (set after create_run for audit trail)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "AirdropRecordV2",
       "type": {

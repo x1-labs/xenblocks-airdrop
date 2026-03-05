@@ -38,6 +38,7 @@ export interface Config {
   nativeAirdrop: NativeAirdropConfig;
   addressFilter: AddressFilter;
   interval: number | null;
+  lockTimeoutSeconds: bigint;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
@@ -165,6 +166,20 @@ function getTokenConfig(
   };
 }
 
+/**
+ * Parse lock timeout from LOCK_TIMEOUT_SECONDS env var.
+ * Default: 1800 (30 minutes). Must be between 60 and 3600.
+ */
+function parseLockTimeout(): bigint {
+  const raw = parseInt(process.env.LOCK_TIMEOUT_SECONDS || '1800', 10);
+  if (raw < 60 || raw > 3600) {
+    throw new Error(
+      `LOCK_TIMEOUT_SECONDS must be between 60 and 3600, got ${raw}`
+    );
+  }
+  return BigInt(raw);
+}
+
 export function loadConfig(): Config {
   const requiredVars = ['AIRDROP_TRACKER_PROGRAM_ID', 'RPC_ENDPOINT'];
 
@@ -255,5 +270,6 @@ export function loadConfig(): Config {
     },
     addressFilter: parseAddressFilter(),
     interval: parseInterval(),
+    lockTimeoutSeconds: parseLockTimeout(),
   };
 }

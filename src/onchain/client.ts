@@ -11,6 +11,7 @@ import {
   deriveAirdropRecordPDA,
   deriveGlobalStatePDA,
   deriveAirdropRunPDA,
+  deriveAirdropLockPDA,
   ethAddressToBytes,
 } from './pda.js';
 import {
@@ -18,7 +19,9 @@ import {
   AIRDROP_RECORD_V2_SIZE,
   GLOBAL_STATE_OFFSETS,
   AIRDROP_RUN_OFFSETS,
+  AIRDROP_LOCK_OFFSETS,
   AirdropRecordV2,
+  AirdropLock,
   GlobalState,
   OnChainAirdropRun,
 } from './types.js';
@@ -106,6 +109,23 @@ export function deserializeAirdropRecordV2(data: Buffer): AirdropRecordV2 {
   };
 }
 
+/**
+ * Deserialize an AirdropLock from account data
+ */
+export function deserializeAirdropLock(data: Buffer): AirdropLock {
+  const lockHolder = new PublicKey(
+    data.slice(AIRDROP_LOCK_OFFSETS.LOCK_HOLDER, AIRDROP_LOCK_OFFSETS.LOCKED_AT)
+  );
+  const lockedAt = data.readBigInt64LE(AIRDROP_LOCK_OFFSETS.LOCKED_AT);
+  const timeoutSeconds = data.readBigInt64LE(
+    AIRDROP_LOCK_OFFSETS.TIMEOUT_SECONDS
+  );
+  const runId = data.readBigUInt64LE(AIRDROP_LOCK_OFFSETS.RUN_ID);
+  const bump = data.readUInt8(AIRDROP_LOCK_OFFSETS.BUMP);
+
+  return { lockHolder, lockedAt, timeoutSeconds, runId, bump };
+}
+
 // ============================================================================
 // Read Functions
 // ============================================================================
@@ -164,6 +184,23 @@ export async function getLastRunDate(
   }
 
   return run.runDate;
+}
+
+/**
+ * Fetch the airdrop lock state
+ */
+export async function getAirdropLock(
+  connection: Connection,
+  programId: PublicKey
+): Promise<AirdropLock | null> {
+  const [pda] = deriveAirdropLockPDA(programId);
+  const accountInfo = await connection.getAccountInfo(pda);
+
+  if (!accountInfo) {
+    return null;
+  }
+
+  return deserializeAirdropLock(accountInfo.data);
 }
 
 /**
@@ -490,6 +527,84 @@ export function createUpdateAuthorityInstruction(
   });
 }
 
+/**
+ * Create instruction to initialize the airdrop lock PDA
+ */
+export function createInitializeLockInstruction(
+  programId: PublicKey,
+  authority: PublicKey
+): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+  const [lock] = deriveAirdropLockPDA(programId);
+
+  // Anchor discriminator for "initialize_lock"
+  const discriminator = Buffer.from([182, 214, 195, 105, 58, 73, 81, 124]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: lock, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId,
+    data: discriminator,
+  });
+}
+
+/**
+ * Create instruction to acquire the airdrop lock
+ */
+export function createAcquireLockInstruction(
+  programId: PublicKey,
+  authority: PublicKey,
+  timeoutSeconds: bigint
+): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+  const [lock] = deriveAirdropLockPDA(programId);
+
+  // Anchor discriminator for "acquire_lock"
+  const discriminator = Buffer.from([101, 3, 93, 16, 193, 193, 148, 175]);
+
+  const data = Buffer.alloc(discriminator.length + 8);
+  discriminator.copy(data, 0);
+  data.writeBigInt64LE(timeoutSeconds, 8);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: lock, isSigner: false, isWritable: true },
+    ],
+    programId,
+    data,
+  });
+}
+
+/**
+ * Create instruction to release the airdrop lock
+ */
+export function createReleaseLockInstruction(
+  programId: PublicKey,
+  authority: PublicKey
+): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+  const [lock] = deriveAirdropLockPDA(programId);
+
+  // Anchor discriminator for "release_lock"
+  const discriminator = Buffer.from([241, 251, 248, 8, 198, 190, 195, 6]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: lock, isSigner: false, isWritable: true },
+    ],
+    programId,
+    data: discriminator,
+  });
+}
+
 // ============================================================================
 // High-Level Functions
 // ============================================================================
@@ -571,6 +686,83 @@ export async function updateOnChainRunTotals(
       totalAmount
     )
   );
+
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [payer],
+    { commitment: 'confirmed' }
+  );
+
+  return signature;
+}
+
+/**
+ * Initialize the airdrop lock PDA (one-time setup)
+ */
+export async function initializeLock(
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair
+): Promise<string> {
+  const transaction = new Transaction();
+  transaction.add(createInitializeLockInstruction(programId, payer.publicKey));
+
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [payer],
+    { commitment: 'confirmed' }
+  );
+
+  return signature;
+}
+
+/**
+ * Acquire the airdrop lock.
+ * Returns { acquired: true, signature } on success.
+ * Returns { acquired: false } if the lock is held (error code 6002 / 0x1772).
+ * Re-throws unexpected errors.
+ */
+export async function acquireLock(
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair,
+  timeoutSeconds: bigint
+): Promise<{ acquired: boolean; signature?: string }> {
+  const transaction = new Transaction();
+  transaction.add(
+    createAcquireLockInstruction(programId, payer.publicKey, timeoutSeconds)
+  );
+
+  try {
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [payer],
+      { commitment: 'confirmed' }
+    );
+    return { acquired: true, signature };
+  } catch (error: unknown) {
+    // Check for LockHeld error (Anchor error code 6002 = 0x1772)
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('0x1772') || message.includes('6002')) {
+      return { acquired: false };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Release the airdrop lock
+ */
+export async function releaseLock(
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair
+): Promise<string> {
+  const transaction = new Transaction();
+  transaction.add(createReleaseLockInstruction(programId, payer.publicKey));
 
   const signature = await sendAndConfirmTransaction(
     connection,

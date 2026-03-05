@@ -29,6 +29,10 @@ import {
   updateOnChainRunTotals,
   initializeState,
   getGlobalState,
+  getAirdropLock,
+  initializeLock,
+  acquireLock,
+  releaseLock,
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
 } from '../onchain/client.js';
@@ -263,188 +267,253 @@ export async function executeAirdrop(
     logger.debug({ signature: initSig }, 'Global state initialized');
   }
 
-  // Create on-chain airdrop run
-  logger.info('Creating on-chain airdrop run...');
-  const { runId, signature: runSig } = await createOnChainRun(
-    connection,
-    config.airdropTrackerProgramId,
-    payer,
-    config.dryRun
-  );
-  logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
-
-  // Fetch miners from API once
-  const allMiners = await fetchMiners(config.apiEndpoint);
-  logger.info({ totalMiners: allMiners.length }, 'Total miners loaded');
-
-  // Apply address filter if specified
-  const { x1Addresses, ethAddresses } = config.addressFilter;
-  const hasFilter = x1Addresses.length > 0 || ethAddresses.length > 0;
-  let miners: Miner[];
-
-  if (hasFilter) {
-    const x1Set = new Set(x1Addresses);
-    const ethSet = new Set(ethAddresses.map((a) => a.toLowerCase()));
-    miners = allMiners.filter(
-      (m) => x1Set.has(m.solAddress) || ethSet.has(m.account.toLowerCase())
-    );
-    logger.info(
-      {
-        x1Addresses: x1Addresses.length,
-        ethAddresses: ethAddresses.length,
-        matched: miners.length,
-      },
-      'Address filter applied'
-    );
-  } else {
-    miners = allMiners;
-  }
-
-  // Fetch on-chain snapshots
-  logger.info('Fetching on-chain snapshots...');
-  const snapshots = await fetchAllMultiTokenSnapshots(
+  // Initialize lock PDA if it doesn't exist
+  const existingLock = await getAirdropLock(
     connection,
     config.airdropTrackerProgramId
   );
-  logger.info(
-    { existingRecords: snapshots.size },
-    'Found existing on-chain records'
-  );
-
-  // Calculate multi-token deltas (including native airdrop eligibility)
-  const deltas = calculateMultiTokenDeltas(
-    miners,
-    snapshots,
-    config.nativeAirdrop
-  );
-  const { totalXnm, totalXblk, totalXuni, totalNative } =
-    calculateMultiTokenTotals(deltas);
-
-  logger.info({ recipients: deltas.length }, 'Recipients with positive delta');
-  logger.info(
-    {
-      xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
-      xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
-      xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
-      nativeNeeded: formatTokenAmount(totalNative, 9),
-    },
-    'Total tokens needed'
-  );
-
-  // Check balances
-  if (totalXnm > xnmPayerInfo.balance) {
-    const shortfall = formatTokenAmount(
-      totalXnm - xnmPayerInfo.balance,
-      xnmConfig.decimals
+  if (!existingLock) {
+    logger.info('Initializing on-chain airdrop lock...');
+    const lockInitSig = await initializeLock(
+      connection,
+      config.airdropTrackerProgramId,
+      payer
     );
-    logger.warn({ shortfall, token: 'XNM' }, 'Insufficient XNM balance');
-    if (!config.dryRun) {
-      logger.error('Cannot proceed with insufficient XNM balance');
-      return;
-    }
+    logger.debug({ signature: lockInitSig }, 'Airdrop lock initialized');
   }
 
-  if (totalXblk > xblkPayerInfo.balance) {
-    const shortfall = formatTokenAmount(
-      totalXblk - xblkPayerInfo.balance,
-      xblkConfig.decimals
-    );
-    logger.warn({ shortfall, token: 'XBLK' }, 'Insufficient XBLK balance');
-    if (!config.dryRun) {
-      logger.error('Cannot proceed with insufficient XBLK balance');
-      return;
-    }
-  }
-
-  if (totalXuni > xuniPayerInfo.balance) {
-    const shortfall = formatTokenAmount(
-      totalXuni - xuniPayerInfo.balance,
-      xuniConfig.decimals
-    );
-    logger.warn({ shortfall, token: 'XUNI' }, 'Insufficient XUNI balance');
-    if (!config.dryRun) {
-      logger.error('Cannot proceed with insufficient XUNI balance');
-      return;
-    }
-  }
-
-  // Check native balance for native airdrops (in addition to fees)
-  if (config.nativeAirdrop.enabled && totalNative > 0n) {
-    const totalNativeNeeded = totalNative + config.minFeeBalance;
-    if (BigInt(nativeBalance) < totalNativeNeeded) {
-      const shortfall = formatTokenAmount(
-        totalNativeNeeded - BigInt(nativeBalance),
-        9
-      );
-      logger.warn(
-        { shortfall, token: 'XNT (native)' },
-        'Insufficient native balance for airdrops'
-      );
-      if (!config.dryRun) {
-        logger.error('Cannot proceed with insufficient native balance');
-        return;
-      }
-    }
-  }
-
-  // Process airdrops
+  // Acquire on-chain lock to prevent concurrent runs
   logger.info(
-    { recipients: deltas.length, concurrency: config.concurrency },
-    'Starting combined airdrop...'
+    { timeoutSeconds: config.lockTimeoutSeconds.toString() },
+    'Acquiring airdrop lock...'
   );
-
-  const results = await processMultiTokenAirdrops(
+  const lockResult = await acquireLock(
     connection,
+    config.airdropTrackerProgramId,
     payer,
-    config,
-    xnmConfig,
-    xblkConfig,
-    xuniConfig,
-    deltas,
-    snapshots
+    config.lockTimeoutSeconds
   );
+  if (!lockResult.acquired) {
+    const lockState = await getAirdropLock(
+      connection,
+      config.airdropTrackerProgramId
+    );
+    logger.fatal(
+      {
+        lockHolder: lockState?.lockHolder.toString(),
+        lockedAt: lockState?.lockedAt.toString(),
+        timeoutSeconds: lockState?.timeoutSeconds.toString(),
+        runId: lockState?.runId.toString(),
+      },
+      'Airdrop lock is held by another process'
+    );
+    throw new Error('Airdrop lock is held by another process');
+  }
+  logger.info({ signature: lockResult.signature }, 'Airdrop lock acquired');
 
-  // Calculate totals
-  const successCount = results.filter((r) => r.status === 'success').length;
-  const totalXnmSent = results
-    .filter((r) => r.status === 'success')
-    .reduce((sum, r) => sum + r.xnmAmount, 0n);
-  const totalXblkSent = results
-    .filter((r) => r.status === 'success')
-    .reduce((sum, r) => sum + r.xblkAmount, 0n);
-  const totalXuniSent = results
-    .filter((r) => r.status === 'success')
-    .reduce((sum, r) => sum + r.xuniAmount, 0n);
-  const totalNativeSent = results
-    .filter((r) => r.status === 'success')
-    .reduce((sum, r) => sum + r.nativeAmount, 0n);
-
-  // Update on-chain run totals
-  if (!config.dryRun && successCount > 0) {
-    logger.info('Updating on-chain run totals...');
-    const updateSig = await updateOnChainRunTotals(
+  try {
+    // Create on-chain airdrop run
+    logger.info('Creating on-chain airdrop run...');
+    const { runId, signature: runSig } = await createOnChainRun(
       connection,
       config.airdropTrackerProgramId,
       payer,
-      runId,
-      successCount,
-      totalXnmSent + totalXblkSent + totalXuniSent
+      config.dryRun
     );
-    logger.debug({ signature: updateSig }, 'Run totals updated');
-  }
+    logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
 
-  // Summary
-  logger.info(
-    {
-      successful: successCount,
-      failed: results.length - successCount,
-      xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
-      xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
-      xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
-      nativeSent: formatTokenAmount(totalNativeSent, 9),
-    },
-    'Airdrop complete'
-  );
+    // Fetch miners from API once
+    const allMiners = await fetchMiners(config.apiEndpoint);
+    logger.info({ totalMiners: allMiners.length }, 'Total miners loaded');
+
+    // Apply address filter if specified
+    const { x1Addresses, ethAddresses } = config.addressFilter;
+    const hasFilter = x1Addresses.length > 0 || ethAddresses.length > 0;
+    let miners: Miner[];
+
+    if (hasFilter) {
+      const x1Set = new Set(x1Addresses);
+      const ethSet = new Set(ethAddresses.map((a) => a.toLowerCase()));
+      miners = allMiners.filter(
+        (m) => x1Set.has(m.solAddress) || ethSet.has(m.account.toLowerCase())
+      );
+      logger.info(
+        {
+          x1Addresses: x1Addresses.length,
+          ethAddresses: ethAddresses.length,
+          matched: miners.length,
+        },
+        'Address filter applied'
+      );
+    } else {
+      miners = allMiners;
+    }
+
+    // Fetch on-chain snapshots
+    logger.info('Fetching on-chain snapshots...');
+    const snapshots = await fetchAllMultiTokenSnapshots(
+      connection,
+      config.airdropTrackerProgramId
+    );
+    logger.info(
+      { existingRecords: snapshots.size },
+      'Found existing on-chain records'
+    );
+
+    // Calculate multi-token deltas (including native airdrop eligibility)
+    const deltas = calculateMultiTokenDeltas(
+      miners,
+      snapshots,
+      config.nativeAirdrop
+    );
+    const { totalXnm, totalXblk, totalXuni, totalNative } =
+      calculateMultiTokenTotals(deltas);
+
+    logger.info(
+      { recipients: deltas.length },
+      'Recipients with positive delta'
+    );
+    logger.info(
+      {
+        xnmNeeded: formatTokenAmount(totalXnm, xnmConfig.decimals),
+        xblkNeeded: formatTokenAmount(totalXblk, xblkConfig.decimals),
+        xuniNeeded: formatTokenAmount(totalXuni, xuniConfig.decimals),
+        nativeNeeded: formatTokenAmount(totalNative, 9),
+      },
+      'Total tokens needed'
+    );
+
+    // Check balances
+    if (totalXnm > xnmPayerInfo.balance) {
+      const shortfall = formatTokenAmount(
+        totalXnm - xnmPayerInfo.balance,
+        xnmConfig.decimals
+      );
+      logger.warn({ shortfall, token: 'XNM' }, 'Insufficient XNM balance');
+      if (!config.dryRun) {
+        logger.error('Cannot proceed with insufficient XNM balance');
+        return;
+      }
+    }
+
+    if (totalXblk > xblkPayerInfo.balance) {
+      const shortfall = formatTokenAmount(
+        totalXblk - xblkPayerInfo.balance,
+        xblkConfig.decimals
+      );
+      logger.warn({ shortfall, token: 'XBLK' }, 'Insufficient XBLK balance');
+      if (!config.dryRun) {
+        logger.error('Cannot proceed with insufficient XBLK balance');
+        return;
+      }
+    }
+
+    if (totalXuni > xuniPayerInfo.balance) {
+      const shortfall = formatTokenAmount(
+        totalXuni - xuniPayerInfo.balance,
+        xuniConfig.decimals
+      );
+      logger.warn({ shortfall, token: 'XUNI' }, 'Insufficient XUNI balance');
+      if (!config.dryRun) {
+        logger.error('Cannot proceed with insufficient XUNI balance');
+        return;
+      }
+    }
+
+    // Check native balance for native airdrops (in addition to fees)
+    if (config.nativeAirdrop.enabled && totalNative > 0n) {
+      const totalNativeNeeded = totalNative + config.minFeeBalance;
+      if (BigInt(nativeBalance) < totalNativeNeeded) {
+        const shortfall = formatTokenAmount(
+          totalNativeNeeded - BigInt(nativeBalance),
+          9
+        );
+        logger.warn(
+          { shortfall, token: 'XNT (native)' },
+          'Insufficient native balance for airdrops'
+        );
+        if (!config.dryRun) {
+          logger.error('Cannot proceed with insufficient native balance');
+          return;
+        }
+      }
+    }
+
+    // Process airdrops
+    logger.info(
+      { recipients: deltas.length, concurrency: config.concurrency },
+      'Starting combined airdrop...'
+    );
+
+    const results = await processMultiTokenAirdrops(
+      connection,
+      payer,
+      config,
+      xnmConfig,
+      xblkConfig,
+      xuniConfig,
+      deltas,
+      snapshots
+    );
+
+    // Calculate totals
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const totalXnmSent = results
+      .filter((r) => r.status === 'success')
+      .reduce((sum, r) => sum + r.xnmAmount, 0n);
+    const totalXblkSent = results
+      .filter((r) => r.status === 'success')
+      .reduce((sum, r) => sum + r.xblkAmount, 0n);
+    const totalXuniSent = results
+      .filter((r) => r.status === 'success')
+      .reduce((sum, r) => sum + r.xuniAmount, 0n);
+    const totalNativeSent = results
+      .filter((r) => r.status === 'success')
+      .reduce((sum, r) => sum + r.nativeAmount, 0n);
+
+    // Update on-chain run totals
+    if (!config.dryRun && successCount > 0) {
+      logger.info('Updating on-chain run totals...');
+      const updateSig = await updateOnChainRunTotals(
+        connection,
+        config.airdropTrackerProgramId,
+        payer,
+        runId,
+        successCount,
+        totalXnmSent + totalXblkSent + totalXuniSent
+      );
+      logger.debug({ signature: updateSig }, 'Run totals updated');
+    }
+
+    // Summary
+    logger.info(
+      {
+        successful: successCount,
+        failed: results.length - successCount,
+        xnmSent: formatTokenAmount(totalXnmSent, xnmConfig.decimals),
+        xblkSent: formatTokenAmount(totalXblkSent, xblkConfig.decimals),
+        xuniSent: formatTokenAmount(totalXuniSent, xuniConfig.decimals),
+        nativeSent: formatTokenAmount(totalNativeSent, 9),
+      },
+      'Airdrop complete'
+    );
+  } finally {
+    // Always release the lock, even on error (lock will auto-expire if this fails)
+    try {
+      logger.info('Releasing airdrop lock...');
+      const releaseSig = await releaseLock(
+        connection,
+        config.airdropTrackerProgramId,
+        payer
+      );
+      logger.info({ signature: releaseSig }, 'Airdrop lock released');
+    } catch (releaseError) {
+      logger.error(
+        { error: releaseError },
+        'Failed to release airdrop lock (will auto-expire)'
+      );
+    }
+  }
 }
 
 /**

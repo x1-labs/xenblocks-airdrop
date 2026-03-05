@@ -6,7 +6,7 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-delegation_program = "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv"
+xenblocks_airdrop_tracker = "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv"
 
 [programs.testnet]
 delegation_program = "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv"
@@ -18,11 +18,11 @@ xenblocks_airdrop_tracker = "xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "https://rpc.mainnet.x1.xyz"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 deploy = "anchor deploy"
 deploy-localnet = "anchor deploy --provider.cluster http://localhost:8899 --program-id target/deploy/delegation_program-keypair-localnet.json"
 deploy-testnet = "anchor deploy --provider.cluster https://rpc.testnet.x1.xyz --program-id target/deploy/delegation_program-keypair-testnet.json"
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "bun vitest run --config vitest.config.anchor.ts"

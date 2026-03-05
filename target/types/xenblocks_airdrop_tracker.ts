@@ -14,6 +14,69 @@ export type XenblocksAirdropTracker = {
   },
   "instructions": [
     {
+      "name": "acquireLock",
+      "docs": [
+        "Acquire the airdrop lock (or override if expired)"
+      ],
+      "discriminator": [
+        101,
+        3,
+        93,
+        16,
+        193,
+        193,
+        148,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "timeoutSeconds",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "closeRecordV2",
       "docs": [
         "Close an airdrop record and reclaim rent (admin only)"
@@ -189,6 +252,68 @@ export type XenblocksAirdropTracker = {
       ]
     },
     {
+      "name": "initializeLock",
+      "docs": [
+        "Initialize the airdrop lock PDA (one-time setup)"
+      ],
+      "discriminator": [
+        182,
+        214,
+        195,
+        105,
+        58,
+        73,
+        81,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initializeRecordV2",
       "docs": [
         "Initialize a new airdrop record keyed by ETH address"
@@ -289,6 +414,64 @@ export type XenblocksAirdropTracker = {
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "releaseLock",
+      "docs": [
+        "Release the airdrop lock (holder only)"
+      ],
+      "discriminator": [
+        241,
+        251,
+        248,
+        8,
+        198,
+        190,
+        195,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -476,6 +659,19 @@ export type XenblocksAirdropTracker = {
   ],
   "accounts": [
     {
+      "name": "airdropLock",
+      "discriminator": [
+        90,
+        243,
+        247,
+        96,
+        76,
+        217,
+        120,
+        216
+      ]
+    },
+    {
       "name": "airdropRecordV2",
       "discriminator": [
         246,
@@ -525,9 +721,67 @@ export type XenblocksAirdropTracker = {
       "code": 6001,
       "name": "unauthorized",
       "msg": "Unauthorized: signer is not the authority"
+    },
+    {
+      "code": 6002,
+      "name": "lockHeld",
+      "msg": "Lock is currently held by another process"
+    },
+    {
+      "code": 6003,
+      "name": "invalidTimeout",
+      "msg": "Invalid timeout: must be between 60 and 3600 seconds"
+    },
+    {
+      "code": 6004,
+      "name": "lockNotHeld",
+      "msg": "Lock is not held by the caller"
     }
   ],
   "types": [
+    {
+      "name": "airdropLock",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lockHolder",
+            "docs": [
+              "Public key of the current lock holder"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lockedAt",
+            "docs": [
+              "Unix timestamp when the lock was acquired"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "timeoutSeconds",
+            "docs": [
+              "Lock timeout duration in seconds"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "runId",
+            "docs": [
+              "Associated run ID (set after create_run for audit trail)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "airdropRecordV2",
       "type": {

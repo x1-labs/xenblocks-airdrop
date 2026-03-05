@@ -153,6 +153,61 @@ pub mod xenblocks_airdrop_tracker {
         state.authority = new_authority;
         Ok(())
     }
+
+    /// Initialize the airdrop lock PDA (one-time setup)
+    pub fn initialize_lock(ctx: Context<InitializeLock>) -> Result<()> {
+        let lock = &mut ctx.accounts.lock;
+        lock.lock_holder = Pubkey::default();
+        lock.locked_at = 0;
+        lock.timeout_seconds = 0;
+        lock.run_id = 0;
+        lock.bump = ctx.bumps.lock;
+        msg!("Initialized airdrop lock");
+        Ok(())
+    }
+
+    /// Acquire the airdrop lock (or override if expired)
+    pub fn acquire_lock(ctx: Context<AcquireLock>, timeout_seconds: i64) -> Result<()> {
+        require!(
+            (60..=3600).contains(&timeout_seconds),
+            ErrorCode::InvalidTimeout
+        );
+
+        let lock = &mut ctx.accounts.lock;
+
+        // If lock is held, check if it has expired
+        if lock.lock_holder != Pubkey::default() {
+            let now = Clock::get()?.unix_timestamp;
+            require!(
+                now >= lock.locked_at + lock.timeout_seconds,
+                ErrorCode::LockHeld
+            );
+            msg!("Overriding expired lock held by {}", lock.lock_holder);
+        }
+
+        lock.lock_holder = ctx.accounts.authority.key();
+        lock.locked_at = Clock::get()?.unix_timestamp;
+        lock.timeout_seconds = timeout_seconds;
+        lock.run_id = 0;
+        msg!("Lock acquired by {}", lock.lock_holder);
+        Ok(())
+    }
+
+    /// Release the airdrop lock (holder only)
+    pub fn release_lock(ctx: Context<ReleaseLock>) -> Result<()> {
+        let lock = &mut ctx.accounts.lock;
+        require!(
+            lock.lock_holder == ctx.accounts.authority.key(),
+            ErrorCode::LockNotHeld
+        );
+
+        msg!("Lock released by {}", lock.lock_holder);
+        lock.lock_holder = Pubkey::default();
+        lock.locked_at = 0;
+        lock.timeout_seconds = 0;
+        lock.run_id = 0;
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -313,6 +368,70 @@ pub struct UpdateAuthority<'info> {
     pub state: Account<'info, GlobalState>,
 }
 
+#[derive(Accounts)]
+pub struct InitializeLock<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropLock::INIT_SPACE,
+        seeds = [b"lock"],
+        bump
+    )]
+    pub lock: Account<'info, AirdropLock>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AcquireLock<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        seeds = [b"lock"],
+        bump = lock.bump
+    )]
+    pub lock: Account<'info, AirdropLock>,
+}
+
+#[derive(Accounts)]
+pub struct ReleaseLock<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        seeds = [b"lock"],
+        bump = lock.bump
+    )]
+    pub lock: Account<'info, AirdropLock>,
+}
+
 // ============================================================================
 // Account Structs
 // ============================================================================
@@ -366,10 +485,31 @@ pub struct AirdropRecordV2 {
     pub bump: u8, // 1 byte
 }
 
+#[account]
+#[derive(InitSpace)]
+pub struct AirdropLock {
+    /// Public key of the current lock holder
+    pub lock_holder: Pubkey, // 32 bytes
+    /// Unix timestamp when the lock was acquired
+    pub locked_at: i64, // 8 bytes
+    /// Lock timeout duration in seconds
+    pub timeout_seconds: i64, // 8 bytes
+    /// Associated run ID (set after create_run for audit trail)
+    pub run_id: u64, // 8 bytes
+    /// PDA bump
+    pub bump: u8, // 1 byte
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Arithmetic overflow when updating total")]
     Overflow,
     #[msg("Unauthorized: signer is not the authority")]
     Unauthorized,
+    #[msg("Lock is currently held by another process")]
+    LockHeld,
+    #[msg("Invalid timeout: must be between 60 and 3600 seconds")]
+    InvalidTimeout,
+    #[msg("Lock is not held by the caller")]
+    LockNotHeld,
 }

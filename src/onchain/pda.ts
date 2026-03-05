@@ -12,6 +12,17 @@ export function deriveGlobalStatePDA(
 }
 
 /**
+ * Derive the PDA for the airdrop lock account
+ *
+ * Seeds: ["lock"]
+ */
+export function deriveAirdropLockPDA(
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from('lock')], programId);
+}
+
+/**
  * Derive the PDA for an airdrop run
  *
  * Seeds: ["run", run_id (u64 LE bytes)]

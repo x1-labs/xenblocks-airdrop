@@ -101,3 +101,35 @@ export const AIRDROP_RECORD_V2_OFFSETS = {
 } as const;
 
 export const AIRDROP_RECORD_V2_SIZE = 8 + 42 + 8 + 8 + 8 + 8 + 32 + 8 + 1; // 123 bytes
+
+/**
+ * On-chain AirdropLock account data structure
+ */
+export interface AirdropLock {
+  lockHolder: PublicKey;
+  lockedAt: bigint;
+  timeoutSeconds: bigint;
+  runId: bigint;
+  bump: number;
+}
+
+/**
+ * Offset constants for AirdropLock deserialization
+ * Account layout:
+ * - 8 bytes: Anchor discriminator
+ * - 32 bytes: lock_holder (Pubkey)
+ * - 8 bytes: locked_at (i64)
+ * - 8 bytes: timeout_seconds (i64)
+ * - 8 bytes: run_id (u64)
+ * - 1 byte: bump (u8)
+ */
+export const AIRDROP_LOCK_OFFSETS = {
+  DISCRIMINATOR: 0,
+  LOCK_HOLDER: 8,
+  LOCKED_AT: 8 + 32, // 40
+  TIMEOUT_SECONDS: 8 + 32 + 8, // 48
+  RUN_ID: 8 + 32 + 8 + 8, // 56
+  BUMP: 8 + 32 + 8 + 8 + 8, // 64
+} as const;
+
+export const AIRDROP_LOCK_SIZE = 8 + 32 + 8 + 8 + 8 + 1; // 65 bytes
