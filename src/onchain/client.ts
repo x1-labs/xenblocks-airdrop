@@ -18,12 +18,12 @@ import {
   AIRDROP_RECORD_V2_OFFSETS,
   AIRDROP_RECORD_V2_SIZE,
   GLOBAL_STATE_OFFSETS,
-  AIRDROP_RUN_OFFSETS,
+  AIRDROP_RUN_V2_OFFSETS,
   AIRDROP_LOCK_OFFSETS,
   AirdropRecordV2,
   AirdropLock,
   GlobalState,
-  OnChainAirdropRun,
+  OnChainAirdropRunV2,
 } from './types.js';
 
 // ============================================================================
@@ -44,16 +44,37 @@ export function deserializeGlobalState(data: Buffer): GlobalState {
 }
 
 /**
- * Deserialize an AirdropRun from account data
+ * Deserialize an AirdropRunV2 from account data
  */
-export function deserializeAirdropRun(data: Buffer): OnChainAirdropRun {
+export function deserializeAirdropRunV2(data: Buffer): OnChainAirdropRunV2 {
+  const reserved: bigint[] = [];
+  for (let i = 0; i < 4; i++) {
+    reserved.push(
+      data.readBigUInt64LE(AIRDROP_RUN_V2_OFFSETS.RESERVED + i * 8)
+    );
+  }
+
   return {
-    runId: data.readBigUInt64LE(AIRDROP_RUN_OFFSETS.RUN_ID),
-    runDate: data.readBigInt64LE(AIRDROP_RUN_OFFSETS.RUN_DATE),
-    totalRecipients: data.readUInt32LE(AIRDROP_RUN_OFFSETS.TOTAL_RECIPIENTS),
-    totalAmount: data.readBigUInt64LE(AIRDROP_RUN_OFFSETS.TOTAL_AMOUNT),
-    dryRun: data.readUInt8(AIRDROP_RUN_OFFSETS.DRY_RUN) === 1,
-    bump: data.readUInt8(AIRDROP_RUN_OFFSETS.BUMP),
+    version: data.readUInt8(AIRDROP_RUN_V2_OFFSETS.VERSION),
+    runId: data.readBigUInt64LE(AIRDROP_RUN_V2_OFFSETS.RUN_ID),
+    runDate: data.readBigInt64LE(AIRDROP_RUN_V2_OFFSETS.RUN_DATE),
+    totalRecipients: data.readUInt32LE(AIRDROP_RUN_V2_OFFSETS.TOTAL_RECIPIENTS),
+    totalAmount: data.readBigUInt64LE(AIRDROP_RUN_V2_OFFSETS.TOTAL_AMOUNT),
+    totalXnmAmount: data.readBigUInt64LE(
+      AIRDROP_RUN_V2_OFFSETS.TOTAL_XNM_AMOUNT
+    ),
+    totalXblkAmount: data.readBigUInt64LE(
+      AIRDROP_RUN_V2_OFFSETS.TOTAL_XBLK_AMOUNT
+    ),
+    totalXuniAmount: data.readBigUInt64LE(
+      AIRDROP_RUN_V2_OFFSETS.TOTAL_XUNI_AMOUNT
+    ),
+    totalNativeAmount: data.readBigUInt64LE(
+      AIRDROP_RUN_V2_OFFSETS.TOTAL_NATIVE_AMOUNT
+    ),
+    dryRun: data.readUInt8(AIRDROP_RUN_V2_OFFSETS.DRY_RUN) === 1,
+    reserved,
+    bump: data.readUInt8(AIRDROP_RUN_V2_OFFSETS.BUMP),
   };
 }
 
@@ -154,7 +175,7 @@ export async function getAirdropRun(
   connection: Connection,
   programId: PublicKey,
   runId: bigint
-): Promise<OnChainAirdropRun | null> {
+): Promise<OnChainAirdropRunV2 | null> {
   const [pda] = deriveAirdropRunPDA(programId, runId);
   const accountInfo = await connection.getAccountInfo(pda);
 
@@ -162,7 +183,7 @@ export async function getAirdropRun(
     return null;
   }
 
-  return deserializeAirdropRun(accountInfo.data);
+  return deserializeAirdropRunV2(accountInfo.data);
 }
 
 /**
@@ -321,7 +342,7 @@ export function createInitializeStateInstruction(
 /**
  * Create instruction to create a new airdrop run
  */
-export function createCreateRunInstruction(
+export function createCreateRunV2Instruction(
   programId: PublicKey,
   authority: PublicKey,
   nextRunId: bigint,
@@ -330,8 +351,8 @@ export function createCreateRunInstruction(
   const [state] = deriveGlobalStatePDA(programId);
   const [airdropRun] = deriveAirdropRunPDA(programId, nextRunId);
 
-  // Anchor discriminator for "create_run"
-  const discriminator = Buffer.from([195, 241, 245, 139, 101, 109, 209, 237]);
+  // Anchor discriminator for "create_run_v2"
+  const discriminator = Buffer.from([26, 236, 217, 25, 54, 95, 138, 75]);
 
   const data = Buffer.alloc(discriminator.length + 1);
   discriminator.copy(data, 0);
@@ -350,25 +371,34 @@ export function createCreateRunInstruction(
 }
 
 /**
- * Create instruction to update run totals
+ * Create instruction to update run totals (V2 with per-token amounts)
  */
-export function createUpdateRunTotalsInstruction(
+export function createUpdateRunTotalsV2Instruction(
   programId: PublicKey,
   authority: PublicKey,
   runId: bigint,
   totalRecipients: number,
-  totalAmount: bigint
+  totalAmount: bigint,
+  totalXnmAmount: bigint,
+  totalXblkAmount: bigint,
+  totalXuniAmount: bigint,
+  totalNativeAmount: bigint
 ): TransactionInstruction {
   const [state] = deriveGlobalStatePDA(programId);
   const [airdropRun] = deriveAirdropRunPDA(programId, runId);
 
-  // Anchor discriminator for "update_run_totals"
-  const discriminator = Buffer.from([38, 24, 28, 212, 47, 29, 149, 65]);
+  // Anchor discriminator for "update_run_totals_v2"
+  const discriminator = Buffer.from([188, 197, 94, 210, 219, 102, 141, 240]);
 
-  const data = Buffer.alloc(discriminator.length + 4 + 8);
+  // total_recipients (4) + total_amount (8) + xnm (8) + xblk (8) + xuni (8) + native (8)
+  const data = Buffer.alloc(discriminator.length + 4 + 8 + 8 + 8 + 8 + 8);
   discriminator.copy(data, 0);
   data.writeUInt32LE(totalRecipients, 8);
   data.writeBigUInt64LE(totalAmount, 12);
+  data.writeBigUInt64LE(totalXnmAmount, 20);
+  data.writeBigUInt64LE(totalXblkAmount, 28);
+  data.writeBigUInt64LE(totalXuniAmount, 36);
+  data.writeBigUInt64LE(totalNativeAmount, 44);
 
   return new TransactionInstruction({
     keys: [
@@ -631,16 +661,15 @@ export async function initializeState(
 }
 
 /**
- * Create a new airdrop run on-chain
+ * Create a new airdrop run on-chain (V2 with per-token totals)
  * Returns the new run ID
  */
-export async function createOnChainRun(
+export async function createOnChainRunV2(
   connection: Connection,
   programId: PublicKey,
   payer: Keypair,
   dryRun: boolean
 ): Promise<{ runId: bigint; signature: string }> {
-  // Get current run counter
   const state = await getGlobalState(connection, programId);
   if (!state) {
     throw new Error(
@@ -652,7 +681,7 @@ export async function createOnChainRun(
 
   const transaction = new Transaction();
   transaction.add(
-    createCreateRunInstruction(programId, payer.publicKey, nextRunId, dryRun)
+    createCreateRunV2Instruction(programId, payer.publicKey, nextRunId, dryRun)
   );
 
   const signature = await sendAndConfirmTransaction(
@@ -666,24 +695,32 @@ export async function createOnChainRun(
 }
 
 /**
- * Update run totals after completion
+ * Update run totals after completion (V2 with per-token amounts)
  */
-export async function updateOnChainRunTotals(
+export async function updateOnChainRunTotalsV2(
   connection: Connection,
   programId: PublicKey,
   payer: Keypair,
   runId: bigint,
   totalRecipients: number,
-  totalAmount: bigint
+  totalAmount: bigint,
+  totalXnmAmount: bigint,
+  totalXblkAmount: bigint,
+  totalXuniAmount: bigint,
+  totalNativeAmount: bigint
 ): Promise<string> {
   const transaction = new Transaction();
   transaction.add(
-    createUpdateRunTotalsInstruction(
+    createUpdateRunTotalsV2Instruction(
       programId,
       payer.publicKey,
       runId,
       totalRecipients,
-      totalAmount
+      totalAmount,
+      totalXnmAmount,
+      totalXblkAmount,
+      totalXuniAmount,
+      totalNativeAmount
     )
   );
 

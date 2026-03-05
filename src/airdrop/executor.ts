@@ -25,8 +25,8 @@ import {
 import {
   fetchAllMultiTokenSnapshots,
   makeSnapshotKey,
-  createOnChainRun,
-  updateOnChainRunTotals,
+  createOnChainRunV2,
+  updateOnChainRunTotalsV2,
   initializeState,
   getGlobalState,
   getAirdropLock,
@@ -312,15 +312,18 @@ export async function executeAirdrop(
   logger.info({ signature: lockResult.signature }, 'Airdrop lock acquired');
 
   try {
-    // Create on-chain airdrop run
-    logger.info('Creating on-chain airdrop run...');
-    const { runId, signature: runSig } = await createOnChainRun(
+    // Create on-chain airdrop run (V2 with per-token totals)
+    logger.info('Creating on-chain airdrop run v2...');
+    const { runId, signature: runSig } = await createOnChainRunV2(
       connection,
       config.airdropTrackerProgramId,
       payer,
       config.dryRun
     );
-    logger.info({ runId: runId.toString(), signature: runSig }, 'Created run');
+    logger.info(
+      { runId: runId.toString(), signature: runSig },
+      'Created run v2'
+    );
 
     // Fetch miners from API once
     const allMiners = await fetchMiners(config.apiEndpoint);
@@ -471,18 +474,24 @@ export async function executeAirdrop(
       .filter((r) => r.status === 'success')
       .reduce((sum, r) => sum + r.nativeAmount, 0n);
 
-    // Update on-chain run totals
+    // Update on-chain run totals (V2 with per-token amounts)
     if (!config.dryRun && successCount > 0) {
-      logger.info('Updating on-chain run totals...');
-      const updateSig = await updateOnChainRunTotals(
+      logger.info('Updating on-chain run totals v2...');
+      const totalCombined =
+        totalXnmSent + totalXblkSent + totalXuniSent + totalNativeSent;
+      const updateSig = await updateOnChainRunTotalsV2(
         connection,
         config.airdropTrackerProgramId,
         payer,
         runId,
         successCount,
-        totalXnmSent + totalXblkSent + totalXuniSent
+        totalCombined,
+        totalXnmSent,
+        totalXblkSent,
+        totalXuniSent,
+        totalNativeSent
       );
-      logger.debug({ signature: updateSig }, 'Run totals updated');
+      logger.debug({ signature: updateSig }, 'Run totals v2 updated');
     }
 
     // Summary

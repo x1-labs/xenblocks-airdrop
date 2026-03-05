@@ -25,7 +25,7 @@ export function deriveAirdropLockPDA(
 /**
  * Derive the PDA for an airdrop run
  *
- * Seeds: ["run", run_id (u64 LE bytes)]
+ * Seeds: ["run_v2", run_id (u64 LE bytes)]
  */
 export function deriveAirdropRunPDA(
   programId: PublicKey,
@@ -34,7 +34,7 @@ export function deriveAirdropRunPDA(
   const runIdBuffer = Buffer.alloc(8);
   runIdBuffer.writeBigUInt64LE(runId);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('run'), runIdBuffer],
+    [Buffer.from('run_v2'), runIdBuffer],
     programId
   );
 }

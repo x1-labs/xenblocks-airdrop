@@ -3,9 +3,9 @@ import { getMint, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import dotenv from 'dotenv';
 import {
   fetchAllMultiTokenSnapshots,
-  deserializeAirdropRun,
+  deserializeAirdropRunV2,
 } from './onchain/client.js';
-import { AIRDROP_RUN_SIZE, OnChainAirdropRun } from './onchain/types.js';
+import { AIRDROP_RUN_V2_SIZE, OnChainAirdropRunV2 } from './onchain/types.js';
 import { fetchMiners } from './airdrop/executor.js';
 import {
   calculateMultiTokenDeltas,
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     fetchAllMultiTokenSnapshots(connection, program),
     fetchMiners(apiEndpoint),
     connection.getProgramAccounts(program, {
-      filters: [{ dataSize: AIRDROP_RUN_SIZE }],
+      filters: [{ dataSize: AIRDROP_RUN_V2_SIZE }],
     }),
   ]);
 
@@ -120,10 +120,10 @@ async function main(): Promise<void> {
   console.log(`\n  On-chain records: ${snapshots.size}`);
 
   // Parse and sort airdrop runs by runId
-  const runs: OnChainAirdropRun[] = [];
+  const runs: OnChainAirdropRunV2[] = [];
   for (const { account } of runAccounts) {
     try {
-      runs.push(deserializeAirdropRun(account.data));
+      runs.push(deserializeAirdropRunV2(account.data));
     } catch {
       // Skip malformed accounts
     }
@@ -134,15 +134,15 @@ async function main(): Promise<void> {
   if (runs.length > 0) {
     console.log();
     console.log(
-      `  ${'Run'.padEnd(6)} ${'Date'.padEnd(24)} ${'Recipients'.padEnd(12)} ${'Total Amount'.padEnd(22)} Dry Run`
+      `  ${'Run'.padEnd(6)} ${'Date'.padEnd(24)} ${'Rcpts'.padEnd(7)} ${'Total'.padEnd(18)} ${'XNM'.padEnd(18)} ${'XBLK'.padEnd(18)} ${'XUNI'.padEnd(18)} ${'Native'.padEnd(18)} Dry`
     );
     console.log(
-      `  ${'---'.padEnd(6)} ${'----'.padEnd(24)} ${'----------'.padEnd(12)} ${'------------'.padEnd(22)} -------`
+      `  ${'---'.padEnd(6)} ${'----'.padEnd(24)} ${'-----'.padEnd(7)} ${'-----'.padEnd(18)} ${'---'.padEnd(18)} ${'----'.padEnd(18)} ${'----'.padEnd(18)} ${'------'.padEnd(18)} ---`
     );
     for (const run of runs) {
       const date = new Date(Number(run.runDate) * 1000).toISOString();
       console.log(
-        `  ${String(run.runId).padEnd(6)} ${date.padEnd(24)} ${String(run.totalRecipients).padEnd(12)} ${fmt(run.totalAmount).padEnd(22)} ${run.dryRun ? 'yes' : 'no'}`
+        `  ${String(run.runId).padEnd(6)} ${date.padEnd(24)} ${String(run.totalRecipients).padEnd(7)} ${fmt(run.totalAmount).padEnd(18)} ${fmt(run.totalXnmAmount).padEnd(18)} ${fmt(run.totalXblkAmount).padEnd(18)} ${fmt(run.totalXuniAmount).padEnd(18)} ${fmt(run.totalNativeAmount).padEnd(18)} ${run.dryRun ? 'yes' : 'no'}`
       );
     }
   }

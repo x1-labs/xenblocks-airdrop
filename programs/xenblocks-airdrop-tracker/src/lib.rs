@@ -53,6 +53,83 @@ pub mod xenblocks_airdrop_tracker {
         Ok(())
     }
 
+    /// Create a new airdrop run (V2 with per-token totals)
+    pub fn create_run_v2(ctx: Context<CreateRunV2>, dry_run: bool) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        let run = &mut ctx.accounts.airdrop_run;
+
+        state.run_counter += 1;
+
+        run.version = 1;
+        run.run_id = state.run_counter;
+        run.run_date = Clock::get()?.unix_timestamp;
+        run.total_recipients = 0;
+        run.total_amount = 0;
+        run.total_xnm_amount = 0;
+        run.total_xblk_amount = 0;
+        run.total_xuni_amount = 0;
+        run.total_native_amount = 0;
+        run.dry_run = dry_run;
+        run.reserved = [0u64; 4];
+        run.bump = ctx.bumps.airdrop_run;
+
+        msg!("Created airdrop run v2 #{}", run.run_id);
+        Ok(())
+    }
+
+    /// Update run totals after completion (V2 with per-token amounts)
+    pub fn update_run_totals_v2(
+        ctx: Context<UpdateRunTotalsV2>,
+        total_recipients: u32,
+        total_amount: u64,
+        total_xnm_amount: u64,
+        total_xblk_amount: u64,
+        total_xuni_amount: u64,
+        total_native_amount: u64,
+    ) -> Result<()> {
+        let run = &mut ctx.accounts.airdrop_run;
+        run.total_recipients = total_recipients;
+        run.total_amount = total_amount;
+        run.total_xnm_amount = total_xnm_amount;
+        run.total_xblk_amount = total_xblk_amount;
+        run.total_xuni_amount = total_xuni_amount;
+        run.total_native_amount = total_native_amount;
+
+        msg!(
+            "Updated run v2 #{}: recipients={}, total={}, xnm={}, xblk={}, xuni={}, native={}",
+            run.run_id,
+            total_recipients,
+            total_amount,
+            total_xnm_amount,
+            total_xblk_amount,
+            total_xuni_amount,
+            total_native_amount
+        );
+        Ok(())
+    }
+
+    /// Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)
+    pub fn migrate_run(ctx: Context<MigrateRun>) -> Result<()> {
+        let old_run = &ctx.accounts.old_run;
+        let new_run = &mut ctx.accounts.new_run;
+
+        new_run.version = 1;
+        new_run.run_id = old_run.run_id;
+        new_run.run_date = old_run.run_date;
+        new_run.total_recipients = old_run.total_recipients;
+        new_run.total_amount = old_run.total_amount;
+        new_run.total_xnm_amount = 0;
+        new_run.total_xblk_amount = 0;
+        new_run.total_xuni_amount = 0;
+        new_run.total_native_amount = 0;
+        new_run.dry_run = old_run.dry_run;
+        new_run.reserved = [0u64; 4];
+        new_run.bump = ctx.bumps.new_run;
+
+        msg!("Migrated run #{} from v1 to v2", old_run.run_id);
+        Ok(())
+    }
+
     /// Initialize a new airdrop record keyed by ETH address
     pub fn initialize_record_v2(
         ctx: Context<InitializeRecordV2>,
@@ -277,6 +354,83 @@ pub struct UpdateRunTotals<'info> {
 }
 
 #[derive(Accounts)]
+pub struct CreateRunV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRunV2::INIT_SPACE,
+        seeds = [b"run_v2", (state.run_counter + 1).to_le_bytes().as_ref()],
+        bump
+    )]
+    pub airdrop_run: Account<'info, AirdropRunV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateRunTotalsV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        seeds = [b"run_v2", airdrop_run.run_id.to_le_bytes().as_ref()],
+        bump = airdrop_run.bump
+    )]
+    pub airdrop_run: Account<'info, AirdropRunV2>,
+}
+
+#[derive(Accounts)]
+pub struct MigrateRun<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"run", old_run.run_id.to_le_bytes().as_ref()],
+        bump = old_run.bump
+    )]
+    pub old_run: Account<'info, AirdropRun>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRunV2::INIT_SPACE,
+        seeds = [b"run_v2", old_run.run_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub new_run: Account<'info, AirdropRunV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(eth_address: [u8; 42])]
 pub struct InitializeRecordV2<'info> {
     #[account(mut)]
@@ -460,6 +614,35 @@ pub struct AirdropRun {
     pub total_amount: u64, // 8 bytes
     /// Whether this was a dry run
     pub dry_run: bool, // 1 byte
+    /// PDA bump
+    pub bump: u8, // 1 byte
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct AirdropRunV2 {
+    /// Schema version (set to 1)
+    pub version: u8, // 1 byte
+    /// Unique run ID
+    pub run_id: u64, // 8 bytes
+    /// Unix timestamp when run started
+    pub run_date: i64, // 8 bytes
+    /// Number of successful recipients
+    pub total_recipients: u32, // 4 bytes
+    /// Total combined amount airdropped (preserved from v1)
+    pub total_amount: u64, // 8 bytes
+    /// Total XNM amount airdropped
+    pub total_xnm_amount: u64, // 8 bytes
+    /// Total XBLK amount airdropped
+    pub total_xblk_amount: u64, // 8 bytes
+    /// Total XUNI amount airdropped
+    pub total_xuni_amount: u64, // 8 bytes
+    /// Total native (XNT) amount airdropped
+    pub total_native_amount: u64, // 8 bytes
+    /// Whether this was a dry run
+    pub dry_run: bool, // 1 byte
+    /// Reserved space for future use
+    pub reserved: [u64; 4], // 32 bytes
     /// PDA bump
     pub bump: u8, // 1 byte
 }

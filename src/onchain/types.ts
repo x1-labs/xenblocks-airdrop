@@ -10,18 +10,6 @@ export interface GlobalState {
 }
 
 /**
- * On-chain AirdropRun account data structure
- */
-export interface OnChainAirdropRun {
-  runId: bigint;
-  runDate: bigint;
-  totalRecipients: number;
-  totalAmount: bigint;
-  dryRun: boolean;
-  bump: number;
-}
-
-/**
  * Offset constants for GlobalState deserialization
  * Account layout:
  * - 8 bytes: Anchor discriminator
@@ -39,27 +27,58 @@ export const GLOBAL_STATE_OFFSETS = {
 export const GLOBAL_STATE_SIZE = 8 + 32 + 8 + 1; // 49 bytes
 
 /**
- * Offset constants for AirdropRun deserialization
+ * On-chain AirdropRunV2 account data structure (per-token totals)
+ */
+export interface OnChainAirdropRunV2 {
+  version: number;
+  runId: bigint;
+  runDate: bigint;
+  totalRecipients: number;
+  totalAmount: bigint;
+  totalXnmAmount: bigint;
+  totalXblkAmount: bigint;
+  totalXuniAmount: bigint;
+  totalNativeAmount: bigint;
+  dryRun: boolean;
+  reserved: bigint[];
+  bump: number;
+}
+
+/**
+ * Offset constants for AirdropRunV2 deserialization
  * Account layout:
  * - 8 bytes: Anchor discriminator
+ * - 1 byte: version (u8)
  * - 8 bytes: run_id (u64)
  * - 8 bytes: run_date (i64)
  * - 4 bytes: total_recipients (u32)
  * - 8 bytes: total_amount (u64)
+ * - 8 bytes: total_xnm_amount (u64)
+ * - 8 bytes: total_xblk_amount (u64)
+ * - 8 bytes: total_xuni_amount (u64)
+ * - 8 bytes: total_native_amount (u64)
  * - 1 byte: dry_run (bool)
+ * - 32 bytes: reserved ([u64; 4])
  * - 1 byte: bump (u8)
  */
-export const AIRDROP_RUN_OFFSETS = {
+export const AIRDROP_RUN_V2_OFFSETS = {
   DISCRIMINATOR: 0,
-  RUN_ID: 8,
-  RUN_DATE: 8 + 8,
-  TOTAL_RECIPIENTS: 8 + 8 + 8,
-  TOTAL_AMOUNT: 8 + 8 + 8 + 4,
-  DRY_RUN: 8 + 8 + 8 + 4 + 8,
-  BUMP: 8 + 8 + 8 + 4 + 8 + 1,
+  VERSION: 8,
+  RUN_ID: 9,
+  RUN_DATE: 17,
+  TOTAL_RECIPIENTS: 25,
+  TOTAL_AMOUNT: 29,
+  TOTAL_XNM_AMOUNT: 37,
+  TOTAL_XBLK_AMOUNT: 45,
+  TOTAL_XUNI_AMOUNT: 53,
+  TOTAL_NATIVE_AMOUNT: 61,
+  DRY_RUN: 69,
+  RESERVED: 70,
+  BUMP: 102,
 } as const;
 
-export const AIRDROP_RUN_SIZE = 8 + 8 + 8 + 4 + 8 + 1 + 1; // 38 bytes
+export const AIRDROP_RUN_V2_SIZE =
+  8 + 1 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 1; // 103 bytes
 
 /**
  * On-chain AirdropRecord account data structure (ETH-only PDA)
