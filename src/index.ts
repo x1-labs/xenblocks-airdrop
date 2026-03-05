@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       'Token config'
     );
   }
-  logger.debug({ rpcEndpoint: config.rpcEndpoint }, 'RPC endpoint');
+  logger.info({ rpcEndpoint: config.rpcEndpoint }, 'RPC endpoint');
   logger.info({ dryRun: config.dryRun }, 'Dry run mode');
 
   const { x1Addresses, ethAddresses } = config.addressFilter;

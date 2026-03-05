@@ -29,6 +29,9 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Anchor
+.anchor/
+
 # Rust/Anchor build output (keep types and idl)
 target/*
 !target/types/

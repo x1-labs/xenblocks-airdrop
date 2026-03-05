@@ -1,7 +1,11 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getMint, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import dotenv from 'dotenv';
-import { fetchAllMultiTokenSnapshots } from './onchain/client.js';
+import {
+  fetchAllMultiTokenSnapshots,
+  deserializeAirdropRun,
+} from './onchain/client.js';
+import { AIRDROP_RUN_SIZE, OnChainAirdropRun } from './onchain/types.js';
 import { fetchMiners } from './airdrop/executor.js';
 import {
   calculateMultiTokenDeltas,
@@ -52,15 +56,26 @@ async function main(): Promise<void> {
   const xblkMint = new PublicKey(process.env.XBLK_TOKEN_MINT!);
   const xuniMint = new PublicKey(process.env.XUNI_TOKEN_MINT!);
 
-  // Fetch mint supplies, on-chain tracker snapshots, and miners in parallel
-  const [xnmMintInfo, xblkMintInfo, xuniMintInfo, snapshots, miners] =
-    await Promise.all([
-      getMint(connection, xnmMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
-      getMint(connection, xblkMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
-      getMint(connection, xuniMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
-      fetchAllMultiTokenSnapshots(connection, new PublicKey(programId)),
-      fetchMiners(apiEndpoint),
-    ]);
+  const program = new PublicKey(programId);
+
+  // Fetch mint supplies, on-chain tracker snapshots, miners, and airdrop runs in parallel
+  const [
+    xnmMintInfo,
+    xblkMintInfo,
+    xuniMintInfo,
+    snapshots,
+    miners,
+    runAccounts,
+  ] = await Promise.all([
+    getMint(connection, xnmMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
+    getMint(connection, xblkMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
+    getMint(connection, xuniMint, 'confirmed', TOKEN_2022_PROGRAM_ID),
+    fetchAllMultiTokenSnapshots(connection, program),
+    fetchMiners(apiEndpoint),
+    connection.getProgramAccounts(program, {
+      filters: [{ dataSize: AIRDROP_RUN_SIZE }],
+    }),
+  ]);
 
   const supplyXnm = xnmMintInfo.supply;
   const supplyXblk = xblkMintInfo.supply;
@@ -103,6 +118,34 @@ async function main(): Promise<void> {
     `  XUNI     ${fmt(apiXuni).padEnd(22)} ${fmt(supplyXuni).padEnd(22)} ${fmt(deltaXuni).padEnd(22)} ${fmt(trackerXuni).padEnd(22)} ${fmt(pending.totalXuni)}`
   );
   console.log(`\n  On-chain records: ${snapshots.size}`);
+
+  // Parse and sort airdrop runs by runId
+  const runs: OnChainAirdropRun[] = [];
+  for (const { account } of runAccounts) {
+    try {
+      runs.push(deserializeAirdropRun(account.data));
+    } catch {
+      // Skip malformed accounts
+    }
+  }
+  runs.sort((a, b) => (a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0));
+
+  console.log(`  Airdrop Runs: ${runs.length}`);
+  if (runs.length > 0) {
+    console.log();
+    console.log(
+      `  ${'Run'.padEnd(6)} ${'Date'.padEnd(24)} ${'Recipients'.padEnd(12)} ${'Total Amount'.padEnd(22)} Dry Run`
+    );
+    console.log(
+      `  ${'---'.padEnd(6)} ${'----'.padEnd(24)} ${'----------'.padEnd(12)} ${'------------'.padEnd(22)} -------`
+    );
+    for (const run of runs) {
+      const date = new Date(Number(run.runDate) * 1000).toISOString();
+      console.log(
+        `  ${String(run.runId).padEnd(6)} ${date.padEnd(24)} ${String(run.totalRecipients).padEnd(12)} ${fmt(run.totalAmount).padEnd(22)} ${run.dryRun ? 'yes' : 'no'}`
+      );
+    }
+  }
   console.log();
 }
 
