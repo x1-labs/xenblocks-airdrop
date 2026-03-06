@@ -83,13 +83,10 @@ jobs:
             echo "⚠️ **Dry run** - image was not pushed to registry" >> $GITHUB_STEP_SUMMARY
           fi
 
-  deploy:
+  deploy-testnet:
     needs: build
     if: ${{ github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: [testnet, mainnet]
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -100,7 +97,7 @@ jobs:
           owner: x1-labs
           repositories: infrafc
 
-      - name: Trigger deployment (${{ matrix.environment }})
+      - name: Trigger deployment (testnet)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -108,7 +105,33 @@ jobs:
             --repo x1-labs/infrafc \
             --ref main \
             -f service="xenblocks-airdrop" \
-            -f environment="${{ matrix.environment }}" \
+            -f environment="testnet" \
+            -f image_tag="${{ github.sha }}" \
+            -f commit_sha="${{ github.sha }}" \
+            -f repo_url="${{ github.server_url }}/${{ github.repository }}"
+
+  deploy-mainnet:
+    needs: deploy-testnet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: 2770147
+          private-key: ${{ secrets.GH_APP_INFRAFC_DEPLOY_KEY }}
+          owner: x1-labs
+          repositories: infrafc
+
+      - name: Trigger deployment (mainnet)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh workflow run deploy-service.yml \
+            --repo x1-labs/infrafc \
+            --ref main \
+            -f service="xenblocks-airdrop" \
+            -f environment="mainnet" \
             -f image_tag="${{ github.sha }}" \
             -f commit_sha="${{ github.sha }}" \
             -f repo_url="${{ github.server_url }}/${{ github.repository }}"
