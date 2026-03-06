@@ -1,6 +1,8 @@
 import http from 'node:http';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Registry, Gauge, Counter } from 'prom-client';
+import { TokenConfig } from './config.js';
 import {
   getGlobalState,
   getAirdropRun,
@@ -15,6 +17,13 @@ const registry = new Registry();
 const walletBalance = new Gauge({
   name: 'airdrop_wallet_balance_lamports',
   help: 'Payer wallet balance in lamports',
+  registers: [registry],
+});
+
+const tokenBalance = new Gauge({
+  name: 'airdrop_token_balance',
+  help: 'Payer token balance (base units)',
+  labelNames: ['token'] as const,
   registers: [registry],
 });
 
@@ -136,12 +145,31 @@ const nativeAirdroppedTotal = new Counter({
 export async function updateGauges(
   connection: Connection,
   payerPublicKey: PublicKey,
-  programId: PublicKey
+  programId: PublicKey,
+  tokens?: TokenConfig[]
 ): Promise<void> {
   try {
     // Wallet balance
     const balance = await connection.getBalance(payerPublicKey);
     walletBalance.set(balance);
+
+    // Token balances
+    if (tokens) {
+      for (const token of tokens) {
+        try {
+          const ata = getAssociatedTokenAddressSync(
+            token.mint,
+            payerPublicKey,
+            false,
+            token.programId
+          );
+          const resp = await connection.getTokenAccountBalance(ata);
+          tokenBalance.set({ token: token.type }, Number(resp.value.amount));
+        } catch {
+          // ATA may not exist yet
+        }
+      }
+    }
 
     // Latest run
     const state = await getGlobalState(connection, programId);

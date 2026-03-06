@@ -62,7 +62,8 @@ async function main(): Promise<void> {
   await updateGauges(
     connection,
     payer.publicKey,
-    config.airdropTrackerProgramId
+    config.airdropTrackerProgramId,
+    config.tokens
   );
 
   if (config.interval === null) {
