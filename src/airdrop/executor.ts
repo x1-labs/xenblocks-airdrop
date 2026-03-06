@@ -36,6 +36,7 @@ import {
   createUpdateRecordInstruction,
   createInitializeAndUpdateInstruction,
 } from '../onchain/client.js';
+import { incrementCounters, incrementRunsCounter } from '../metrics.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -532,7 +533,18 @@ export async function executeAirdrop(
       xuniConfig,
       deltas,
       snapshots,
-      (result) => results.push(result)
+      (result) => {
+        results.push(result);
+        if (result.status === 'success') {
+          incrementCounters(
+            1,
+            result.xnmAmount,
+            result.xblkAmount,
+            result.xuniAmount,
+            result.nativeAmount
+          );
+        }
+      }
     );
 
     // Calculate totals
@@ -582,6 +594,10 @@ export async function executeAirdrop(
       },
       'Airdrop complete'
     );
+
+    if (successCount > 0) {
+      incrementRunsCounter();
+    }
   } finally {
     process.removeListener('SIGINT', onSigint);
     process.removeListener('SIGTERM', onSigterm);

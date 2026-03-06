@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { getConnection, getPayer } from './solana/connection.js';
 import { executeAirdrop } from './airdrop/executor.js';
 import { getLastRunDate } from './onchain/client.js';
+import { startMetricsServer, updateGauges } from './metrics.js';
 import logger from './utils/logger.js';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -57,10 +58,22 @@ async function main(): Promise<void> {
 
   logger.info({ payer: payer.publicKey.toString() }, 'Payer wallet');
 
+  startMetricsServer(config.metricsPort);
+  await updateGauges(
+    connection,
+    payer.publicKey,
+    config.airdropTrackerProgramId
+  );
+
   if (config.interval === null) {
     // Single run mode (original behavior)
     try {
       await executeAirdrop(connection, payer, config);
+      await updateGauges(
+        connection,
+        payer.publicKey,
+        config.airdropTrackerProgramId
+      );
     } catch (error) {
       logger.fatal({ error }, 'Airdrop failed');
       process.exit(1);
@@ -76,6 +89,12 @@ async function main(): Promise<void> {
 
   while (true) {
     try {
+      await updateGauges(
+        connection,
+        payer.publicKey,
+        config.airdropTrackerProgramId
+      );
+
       // Check when the last run happened
       const lastRunDate = await getLastRunDate(
         connection,
@@ -106,6 +125,12 @@ async function main(): Promise<void> {
             );
             await sleep(wait);
 
+            await updateGauges(
+              connection,
+              payer.publicKey,
+              config.airdropTrackerProgramId
+            );
+
             const refreshed = await getLastRunDate(
               connection,
               config.airdropTrackerProgramId
@@ -120,6 +145,11 @@ async function main(): Promise<void> {
       }
 
       await executeAirdrop(connection, payer, config);
+      await updateGauges(
+        connection,
+        payer.publicKey,
+        config.airdropTrackerProgramId
+      );
     } catch (error) {
       logger.error({ error }, 'Airdrop run failed, will retry after backoff');
       // Wait before retrying to avoid tight error loops

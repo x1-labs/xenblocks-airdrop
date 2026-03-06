@@ -39,6 +39,7 @@ export interface Config {
   addressFilter: AddressFilter;
   interval: number | null;
   lockTimeoutSeconds: bigint;
+  metricsPort: number;
 }
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
@@ -271,5 +272,6 @@ export function loadConfig(): Config {
     addressFilter: parseAddressFilter(),
     interval: parseInterval(),
     lockTimeoutSeconds: parseLockTimeout(),
+    metricsPort: parseInt(process.env.METRICS_PORT || '9090', 10),
   };
 }
