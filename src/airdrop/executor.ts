@@ -313,9 +313,16 @@ export async function executeAirdrop(
 
   // Mutable run state — accessible to signal handler for graceful shutdown
   let runId: bigint | null = null;
+  let cleanupPromise: Promise<void> | null = null;
   const results: MultiTokenAirdropResult[] = [];
 
-  const cleanup = async () => {
+  const cleanup = (): Promise<void> => {
+    if (cleanupPromise) return cleanupPromise;
+    cleanupPromise = performCleanup();
+    return cleanupPromise;
+  };
+
+  const performCleanup = async () => {
     // Update run totals with whatever we've accumulated so far
     if (runId !== null && !config.dryRun) {
       const successResults = results.filter((r) => r.status === 'success');

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun src/index.ts",
     "status": "bun src/status.ts",
+    "release-lock": "bun src/release-lock.ts",
     "build": "tsc",
     "build:program": "anchor build",
     "start": "bun dist/index.js",
