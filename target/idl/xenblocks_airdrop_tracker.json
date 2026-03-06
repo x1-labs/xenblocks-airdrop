@@ -116,61 +116,6 @@
       "args": []
     },
     {
-      "name": "create_run",
-      "docs": [
-        "Create a new airdrop run"
-      ],
-      "discriminator": [
-        195,
-        241,
-        245,
-        139,
-        101,
-        109,
-        209,
-        237
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "airdrop_run",
-          "writable": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "dry_run",
-          "type": "bool"
-        }
-      ]
-    },
-    {
       "name": "create_run_v2",
       "docs": [
         "Create a new airdrop run (V2 with per-token totals)"
@@ -468,96 +413,6 @@
       "args": []
     },
     {
-      "name": "migrate_run",
-      "docs": [
-        "Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)"
-      ],
-      "discriminator": [
-        63,
-        201,
-        65,
-        139,
-        150,
-        53,
-        143,
-        116
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "old_run",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "old_run.run_id",
-                "account": "AirdropRun"
-              }
-            ]
-          }
-        },
-        {
-          "name": "new_run",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110,
-                  95,
-                  118,
-                  50
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "old_run.run_id",
-                "account": "AirdropRun"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "release_lock",
       "docs": [
         "Release the airdrop lock (holder only)"
@@ -725,77 +580,6 @@
       ]
     },
     {
-      "name": "update_run_totals",
-      "docs": [
-        "Update run totals after completion"
-      ],
-      "discriminator": [
-        38,
-        24,
-        28,
-        212,
-        47,
-        29,
-        149,
-        65
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "airdrop_run",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "airdrop_run.run_id",
-                "account": "AirdropRun"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "total_recipients",
-          "type": "u32"
-        },
-        {
-          "name": "total_amount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "update_run_totals_v2",
       "docs": [
         "Update run totals after completion (V2 with per-token amounts)"
@@ -911,19 +695,6 @@
         249,
         155,
         7
-      ]
-    },
-    {
-      "name": "AirdropRun",
-      "discriminator": [
-        174,
-        215,
-        129,
-        23,
-        242,
-        50,
-        97,
-        35
       ]
     },
     {
@@ -1092,56 +863,6 @@
             "name": "bump",
             "docs": [
               "PDA bump seed for derivation"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "AirdropRun",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "run_id",
-            "docs": [
-              "Unique run ID"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "run_date",
-            "docs": [
-              "Unix timestamp when run started"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "total_recipients",
-            "docs": [
-              "Number of successful recipients"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "total_amount",
-            "docs": [
-              "Total amount airdropped (in token base units)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "dry_run",
-            "docs": [
-              "Whether this was a dry run"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump"
             ],
             "type": "u8"
           }

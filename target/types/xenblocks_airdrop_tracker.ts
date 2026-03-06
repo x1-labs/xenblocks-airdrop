@@ -122,61 +122,6 @@ export type XenblocksAirdropTracker = {
       "args": []
     },
     {
-      "name": "createRun",
-      "docs": [
-        "Create a new airdrop run"
-      ],
-      "discriminator": [
-        195,
-        241,
-        245,
-        139,
-        101,
-        109,
-        209,
-        237
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "airdropRun",
-          "writable": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "dryRun",
-          "type": "bool"
-        }
-      ]
-    },
-    {
       "name": "createRunV2",
       "docs": [
         "Create a new airdrop run (V2 with per-token totals)"
@@ -474,96 +419,6 @@ export type XenblocksAirdropTracker = {
       "args": []
     },
     {
-      "name": "migrateRun",
-      "docs": [
-        "Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)"
-      ],
-      "discriminator": [
-        63,
-        201,
-        65,
-        139,
-        150,
-        53,
-        143,
-        116
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "oldRun",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "old_run.run_id",
-                "account": "airdropRun"
-              }
-            ]
-          }
-        },
-        {
-          "name": "newRun",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110,
-                  95,
-                  118,
-                  50
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "old_run.run_id",
-                "account": "airdropRun"
-              }
-            ]
-          }
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "releaseLock",
       "docs": [
         "Release the airdrop lock (holder only)"
@@ -731,77 +586,6 @@ export type XenblocksAirdropTracker = {
       ]
     },
     {
-      "name": "updateRunTotals",
-      "docs": [
-        "Update run totals after completion"
-      ],
-      "discriminator": [
-        38,
-        24,
-        28,
-        212,
-        47,
-        29,
-        149,
-        65
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "airdropRun",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  117,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "airdrop_run.run_id",
-                "account": "airdropRun"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "totalRecipients",
-          "type": "u32"
-        },
-        {
-          "name": "totalAmount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "updateRunTotalsV2",
       "docs": [
         "Update run totals after completion (V2 with per-token amounts)"
@@ -917,19 +701,6 @@ export type XenblocksAirdropTracker = {
         249,
         155,
         7
-      ]
-    },
-    {
-      "name": "airdropRun",
-      "discriminator": [
-        174,
-        215,
-        129,
-        23,
-        242,
-        50,
-        97,
-        35
       ]
     },
     {
@@ -1098,56 +869,6 @@ export type XenblocksAirdropTracker = {
             "name": "bump",
             "docs": [
               "PDA bump seed for derivation"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "airdropRun",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "runId",
-            "docs": [
-              "Unique run ID"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "runDate",
-            "docs": [
-              "Unix timestamp when run started"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "totalRecipients",
-            "docs": [
-              "Number of successful recipients"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "totalAmount",
-            "docs": [
-              "Total amount airdropped (in token base units)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "dryRun",
-            "docs": [
-              "Whether this was a dry run"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump"
             ],
             "type": "u8"
           }
