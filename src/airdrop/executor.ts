@@ -311,15 +311,83 @@ export async function executeAirdrop(
   }
   logger.info({ signature: lockResult.signature }, 'Airdrop lock acquired');
 
+  // Mutable run state — accessible to signal handler for graceful shutdown
+  let runId: bigint | null = null;
+  const results: MultiTokenAirdropResult[] = [];
+
+  const cleanup = async () => {
+    // Update run totals with whatever we've accumulated so far
+    if (runId !== null && !config.dryRun) {
+      const successResults = results.filter((r) => r.status === 'success');
+      const successCount = successResults.length;
+      if (successCount > 0) {
+        try {
+          const xnm = successResults.reduce((s, r) => s + r.xnmAmount, 0n);
+          const xblk = successResults.reduce((s, r) => s + r.xblkAmount, 0n);
+          const xuni = successResults.reduce((s, r) => s + r.xuniAmount, 0n);
+          const native = successResults.reduce(
+            (s, r) => s + r.nativeAmount,
+            0n
+          );
+          logger.info('Updating on-chain run totals before exit...');
+          await updateOnChainRunTotalsV2(
+            connection,
+            config.airdropTrackerProgramId,
+            payer,
+            runId,
+            successCount,
+            xnm + xblk + xuni + native,
+            xnm,
+            xblk,
+            xuni,
+            native
+          );
+          logger.info('Run totals updated');
+        } catch (error) {
+          logger.error({ error }, 'Failed to update run totals during cleanup');
+        }
+      }
+    }
+
+    // Release the lock
+    try {
+      logger.info('Releasing airdrop lock...');
+      const releaseSig = await releaseLock(
+        connection,
+        config.airdropTrackerProgramId,
+        payer
+      );
+      logger.info({ signature: releaseSig }, 'Airdrop lock released');
+    } catch (releaseError) {
+      logger.error(
+        { error: releaseError },
+        'Failed to release airdrop lock (will auto-expire)'
+      );
+    }
+  };
+
+  // Register signal handlers for graceful shutdown
+  const signalHandler = async (signal: string) => {
+    logger.warn({ signal }, 'Received signal, cleaning up...');
+    await cleanup();
+    process.exit(1);
+  };
+
+  const onSigint = () => void signalHandler('SIGINT');
+  const onSigterm = () => void signalHandler('SIGTERM');
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
+
   try {
     // Create on-chain airdrop run (V2 with per-token totals)
     logger.info('Creating on-chain airdrop run v2...');
-    const { runId, signature: runSig } = await createOnChainRunV2(
+    const { runId: newRunId, signature: runSig } = await createOnChainRunV2(
       connection,
       config.airdropTrackerProgramId,
       payer,
       config.dryRun
     );
+    runId = newRunId;
     logger.info(
       { runId: runId.toString(), signature: runSig },
       'Created run v2'
@@ -442,13 +510,13 @@ export async function executeAirdrop(
       }
     }
 
-    // Process airdrops
+    // Process airdrops (results accumulate into the shared array for signal handler access)
     logger.info(
       { recipients: deltas.length, concurrency: config.concurrency },
       'Starting combined airdrop...'
     );
 
-    const results = await processMultiTokenAirdrops(
+    await processMultiTokenAirdrops(
       connection,
       payer,
       config,
@@ -456,7 +524,8 @@ export async function executeAirdrop(
       xblkConfig,
       xuniConfig,
       deltas,
-      snapshots
+      snapshots,
+      (result) => results.push(result)
     );
 
     // Calculate totals
@@ -507,21 +576,9 @@ export async function executeAirdrop(
       'Airdrop complete'
     );
   } finally {
-    // Always release the lock, even on error (lock will auto-expire if this fails)
-    try {
-      logger.info('Releasing airdrop lock...');
-      const releaseSig = await releaseLock(
-        connection,
-        config.airdropTrackerProgramId,
-        payer
-      );
-      logger.info({ signature: releaseSig }, 'Airdrop lock released');
-    } catch (releaseError) {
-      logger.error(
-        { error: releaseError },
-        'Failed to release airdrop lock (will auto-expire)'
-      );
-    }
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
+    await cleanup();
   }
 }
 
@@ -661,9 +718,9 @@ async function processMultiTokenAirdrops(
   xblkConfig: TokenConfig,
   xuniConfig: TokenConfig,
   deltas: MultiTokenDelta[],
-  snapshots: Map<string, OnChainSnapshot>
-): Promise<MultiTokenAirdropResult[]> {
-  const results: MultiTokenAirdropResult[] = [];
+  snapshots: Map<string, OnChainSnapshot>,
+  onResult: (result: MultiTokenAirdropResult) => void
+): Promise<void> {
   const { concurrency } = config;
 
   let successCount = 0;
@@ -687,7 +744,7 @@ async function processMultiTokenAirdrops(
         '[DRY RUN] Would send tokens'
       );
 
-      results.push({
+      onResult({
         walletAddress: delta.walletAddress,
         ethAddress: delta.ethAddress,
         xnmAmount: delta.xnmDelta,
@@ -711,7 +768,7 @@ async function processMultiTokenAirdrops(
         );
       }
     }
-    return results;
+    return;
   }
 
   // Process with concurrency (one recipient per transaction)
@@ -753,7 +810,7 @@ async function processMultiTokenAirdrops(
     const batchResults = await Promise.all(batchPromises);
 
     for (const result of batchResults) {
-      results.push(result);
+      onResult(result);
       if (result.status === 'success') {
         successCount++;
       } else {
@@ -772,6 +829,4 @@ async function processMultiTokenAirdrops(
     },
     'Processing complete'
   );
-
-  return results;
 }
