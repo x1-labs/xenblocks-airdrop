@@ -44,6 +44,14 @@ export interface Config {
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
 
+const DEFAULT_TOKEN_MINTS: Record<TokenType, string> = {
+  xnm: 'XNMbEwZFFBKQhqyW3taa8cAUp1xBUHfyzRFJQvZET4m',
+  xblk: 'XBLKLmxhADMVX3DsdwymvHyYbBYfKa5eKhtpiQ2kj7T',
+  xuni: 'XUNigZPoe8f657NkRf7KF8tqj9ekouT4SoECsD6G2Bm',
+};
+
+const DEFAULT_PROGRAM_ID = 'xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv';
+
 const DURATION_UNITS: Record<string, number> = {
   m: 60 * 1000,
   h: 60 * 60 * 1000,
@@ -145,10 +153,7 @@ function getTokenConfig(
   const decimalsEnvVar = `${envPrefix}_DECIMALS`;
   const programEnvVar = `${envPrefix}_TOKEN_PROGRAM`;
 
-  const mint = process.env[mintEnvVar];
-  if (!mint) {
-    throw new Error(`Missing required environment variable: ${mintEnvVar}`);
-  }
+  const mint = process.env[mintEnvVar] || DEFAULT_TOKEN_MINTS[tokenType];
 
   // Per-token program override (e.g., XUNI_TOKEN_PROGRAM=token-2022)
   const tokenProgram = process.env[programEnvVar];
@@ -182,7 +187,7 @@ function parseLockTimeout(): bigint {
 }
 
 export function loadConfig(): Config {
-  const requiredVars = ['AIRDROP_TRACKER_PROGRAM_ID', 'RPC_ENDPOINT'];
+  const requiredVars = ['RPC_ENDPOINT'];
 
   for (const varName of requiredVars) {
     if (!process.env[varName]) {
@@ -203,8 +208,8 @@ export function loadConfig(): Config {
       ? TOKEN_2022_PROGRAM_ID
       : TOKEN_PROGRAM_ID;
 
-  // Parse token types from env (defaults to 'xnm')
-  const tokenTypesEnv = process.env.TOKEN_TYPES || 'xnm';
+  // Parse token types from env (defaults to all three)
+  const tokenTypesEnv = process.env.TOKEN_TYPES || 'xnm,xblk,xuni';
   const tokenTypes = parseTokenTypes(tokenTypesEnv);
 
   // Build token configs for each requested token type
@@ -252,7 +257,7 @@ export function loadConfig(): Config {
   return {
     tokens,
     airdropTrackerProgramId: new PublicKey(
-      process.env.AIRDROP_TRACKER_PROGRAM_ID!
+      process.env.AIRDROP_TRACKER_PROGRAM_ID || DEFAULT_PROGRAM_ID
     ),
     rpcEndpoint: process.env.RPC_ENDPOINT!,
     dryRun: process.env.DRY_RUN === 'true',
