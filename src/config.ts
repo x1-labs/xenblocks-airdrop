@@ -44,7 +44,7 @@ export interface Config {
 
 const VALID_TOKEN_TYPES: TokenType[] = ['xnm', 'xblk', 'xuni'];
 
-const DEFAULT_TOKEN_MINTS: Record<TokenType, string> = {
+export const DEFAULT_TOKEN_MINTS: Record<TokenType, string> = {
   xnm: 'XNMbEwZFFBKQhqyW3taa8cAUp1xBUHfyzRFJQvZET4m',
   xblk: 'XBLKLmxhADMVX3DsdwymvHyYbBYfKa5eKhtpiQ2kj7T',
   xuni: 'XUNigZPoe8f657NkRf7KF8tqj9ekouT4SoECsD6G2Bm',
