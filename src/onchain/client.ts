@@ -10,7 +10,6 @@ import {
 import {
   deriveAirdropRecordPDA,
   deriveGlobalStatePDA,
-  deriveGlobalStateLegacyPDA,
   deriveAirdropRunPDA,
   deriveAirdropLockPDA,
   ethAddressToBytes,
@@ -350,65 +349,6 @@ export async function fetchAllMultiTokenSnapshots(
 // ============================================================================
 
 /**
- * Create instruction to initialize global state (one-time setup, V1 — legacy)
- */
-export function createInitializeStateInstruction(
-  programId: PublicKey,
-  authority: PublicKey
-): TransactionInstruction {
-  const [state] = deriveGlobalStateLegacyPDA(programId);
-
-  // Anchor discriminator for "initialize_state"
-  const discriminator = Buffer.from([190, 171, 224, 219, 217, 72, 199, 176]);
-
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: state, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId,
-    data: discriminator,
-  });
-}
-
-/**
- * Create instruction to migrate GlobalState to GlobalStateV2
- */
-export function createMigrateStateInstruction(
-  programId: PublicKey,
-  authority: PublicKey,
-  xnmAirdropped: bigint,
-  xblkAirdropped: bigint,
-  xuniAirdropped: bigint,
-  nativeAirdropped: bigint
-): TransactionInstruction {
-  const [oldState] = deriveGlobalStateLegacyPDA(programId);
-  const [newState] = deriveGlobalStatePDA(programId);
-
-  // Anchor discriminator for "migrate_state"
-  const discriminator = Buffer.from([34, 189, 226, 222, 218, 156, 19, 213]);
-
-  const data = Buffer.alloc(discriminator.length + 8 + 8 + 8 + 8);
-  discriminator.copy(data, 0);
-  data.writeBigUInt64LE(xnmAirdropped, 8);
-  data.writeBigUInt64LE(xblkAirdropped, 16);
-  data.writeBigUInt64LE(xuniAirdropped, 24);
-  data.writeBigUInt64LE(nativeAirdropped, 32);
-
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: oldState, isSigner: false, isWritable: true },
-      { pubkey: newState, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId,
-    data,
-  });
-}
-
-/**
  * Create instruction to create a new airdrop run
  */
 export function createCreateRunV2Instruction(
@@ -707,27 +647,6 @@ export function createReleaseLockInstruction(
 // ============================================================================
 // High-Level Functions
 // ============================================================================
-
-/**
- * Initialize the global state (one-time setup)
- */
-export async function initializeState(
-  connection: Connection,
-  programId: PublicKey,
-  payer: Keypair
-): Promise<string> {
-  const transaction = new Transaction();
-  transaction.add(createInitializeStateInstruction(programId, payer.publicKey));
-
-  const signature = await sendAndConfirmTransaction(
-    connection,
-    transaction,
-    [payer],
-    { commitment: 'confirmed' }
-  );
-
-  return signature;
-}
 
 /**
  * Create a new airdrop run on-chain (V2 with per-token totals)

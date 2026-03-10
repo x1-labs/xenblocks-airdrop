@@ -27,7 +27,6 @@ import {
   makeSnapshotKey,
   createOnChainRunV2,
   updateOnChainRunTotalsV2,
-  initializeState,
   getGlobalState,
   getAirdropLock,
   initializeLock,
@@ -253,19 +252,13 @@ export async function executeAirdrop(
     'Payer token balances'
   );
 
-  // Check if global state is initialized
+  // Verify global state is initialized
   const globalState = await getGlobalState(
     connection,
     config.airdropTrackerProgramId
   );
   if (!globalState) {
-    logger.info('Initializing on-chain global state...');
-    const initSig = await initializeState(
-      connection,
-      config.airdropTrackerProgramId,
-      payer
-    );
-    logger.debug({ signature: initSig }, 'Global state initialized');
+    throw new Error('GlobalStateV2 not found. Run the migration script first.');
   }
 
   // Initialize lock PDA if it doesn't exist

@@ -1,32 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * On-chain GlobalState account data structure
- */
-export interface GlobalState {
-  authority: PublicKey;
-  runCounter: bigint;
-  bump: number;
-}
-
-/**
- * Offset constants for GlobalState deserialization
- * Account layout:
- * - 8 bytes: Anchor discriminator
- * - 32 bytes: authority (Pubkey)
- * - 8 bytes: run_counter (u64)
- * - 1 byte: bump (u8)
- */
-export const GLOBAL_STATE_OFFSETS = {
-  DISCRIMINATOR: 0,
-  AUTHORITY: 8,
-  RUN_COUNTER: 8 + 32,
-  BUMP: 8 + 32 + 8,
-} as const;
-
-export const GLOBAL_STATE_SIZE = 8 + 32 + 8 + 1; // 49 bytes
-
-/**
  * On-chain GlobalStateV2 account data structure (with cumulative totals)
  */
 export interface GlobalStateV2 {

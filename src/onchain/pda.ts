@@ -12,17 +12,6 @@ export function deriveGlobalStatePDA(
 }
 
 /**
- * Derive the PDA for the legacy global state account (for migration only)
- *
- * Seeds: ["state"]
- */
-export function deriveGlobalStateLegacyPDA(
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from('state')], programId);
-}
-
-/**
  * Derive the PDA for the airdrop lock account
  *
  * Seeds: ["lock"]
