@@ -39,7 +39,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -102,7 +105,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -114,6 +120,61 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "create_run",
+      "docs": [
+        "Create a new airdrop run"
+      ],
+      "discriminator": [
+        195,
+        241,
+        245,
+        139,
+        101,
+        109,
+        209,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_run",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "dry_run",
+          "type": "bool"
+        }
+      ]
     },
     {
       "name": "create_run_v2",
@@ -148,7 +209,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -193,6 +257,7 @@
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -202,7 +267,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -277,7 +345,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -330,6 +401,7 @@
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -339,7 +411,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -413,6 +488,183 @@
       "args": []
     },
     {
+      "name": "migrate_run",
+      "docs": [
+        "Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)"
+      ],
+      "discriminator": [
+        63,
+        201,
+        65,
+        139,
+        150,
+        53,
+        143,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101,
+                  95,
+                  118,
+                  50
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "old_run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "old_run.run_id",
+                "account": "AirdropRun"
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110,
+                  95,
+                  118,
+                  50
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "old_run.run_id",
+                "account": "AirdropRun"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "migrate_state",
+      "docs": [
+        "Migrate GlobalState to GlobalStateV2 (closes old account, creates new one)"
+      ],
+      "discriminator": [
+        34,
+        189,
+        226,
+        222,
+        218,
+        156,
+        19,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "old_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101,
+                  95,
+                  118,
+                  50
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "xnm_airdropped",
+          "type": "u64"
+        },
+        {
+          "name": "xblk_airdropped",
+          "type": "u64"
+        },
+        {
+          "name": "xuni_airdropped",
+          "type": "u64"
+        },
+        {
+          "name": "native_airdropped",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "release_lock",
       "docs": [
         "Release the airdrop lock (holder only)"
@@ -444,7 +696,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -503,7 +758,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -540,6 +798,7 @@
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -549,7 +808,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -575,6 +837,77 @@
         },
         {
           "name": "native_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_run_totals",
+      "docs": [
+        "Update run totals after completion"
+      ],
+      "discriminator": [
+        38,
+        24,
+        28,
+        212,
+        47,
+        29,
+        149,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdrop_run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "airdrop_run.run_id",
+                "account": "AirdropRun"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "total_recipients",
+          "type": "u32"
+        },
+        {
+          "name": "total_amount",
           "type": "u64"
         }
       ]
@@ -611,7 +944,10 @@
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -698,6 +1034,19 @@
       ]
     },
     {
+      "name": "AirdropRun",
+      "discriminator": [
+        174,
+        215,
+        129,
+        23,
+        242,
+        50,
+        97,
+        35
+      ]
+    },
+    {
       "name": "AirdropRunV2",
       "discriminator": [
         127,
@@ -721,6 +1070,19 @@
         123,
         133,
         98
+      ]
+    },
+    {
+      "name": "GlobalStateV2",
+      "discriminator": [
+        244,
+        133,
+        94,
+        157,
+        48,
+        192,
+        238,
+        52
       ]
     }
   ],
@@ -870,6 +1232,56 @@
       }
     },
     {
+      "name": "AirdropRun",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run_id",
+            "docs": [
+              "Unique run ID"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "run_date",
+            "docs": [
+              "Unix timestamp when run started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "total_recipients",
+            "docs": [
+              "Number of successful recipients"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "total_amount",
+            "docs": [
+              "Total amount airdropped (in token base units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "dry_run",
+            "docs": [
+              "Whether this was a dry run"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "AirdropRunV2",
       "type": {
         "kind": "struct",
@@ -984,6 +1396,82 @@
               "Counter for run IDs"
             ],
             "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalStateV2",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Schema version (set to 1)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority who can create runs and update records"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "run_counter",
+            "docs": [
+              "Counter for run IDs"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xnm_airdropped",
+            "docs": [
+              "Cumulative XNM airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xblk_airdropped",
+            "docs": [
+              "Cumulative XBLK airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xuni_airdropped",
+            "docs": [
+              "Cumulative XUNI airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "native_airdropped",
+            "docs": [
+              "Cumulative native (XNT) airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Reserved space for future use"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                4
+              ]
+            }
           },
           {
             "name": "bump",

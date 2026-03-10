@@ -45,7 +45,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -108,7 +111,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -120,6 +126,61 @@ export type XenblocksAirdropTracker = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "createRun",
+      "docs": [
+        "Create a new airdrop run"
+      ],
+      "discriminator": [
+        195,
+        241,
+        245,
+        139,
+        101,
+        109,
+        209,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdropRun",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "dryRun",
+          "type": "bool"
+        }
+      ]
     },
     {
       "name": "createRunV2",
@@ -154,7 +215,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -199,6 +263,7 @@ export type XenblocksAirdropTracker = {
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -208,7 +273,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -283,7 +351,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -336,6 +407,7 @@ export type XenblocksAirdropTracker = {
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -345,7 +417,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -419,6 +494,183 @@ export type XenblocksAirdropTracker = {
       "args": []
     },
     {
+      "name": "migrateRun",
+      "docs": [
+        "Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)"
+      ],
+      "discriminator": [
+        63,
+        201,
+        65,
+        139,
+        150,
+        53,
+        143,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101,
+                  95,
+                  118,
+                  50
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oldRun",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "old_run.run_id",
+                "account": "airdropRun"
+              }
+            ]
+          }
+        },
+        {
+          "name": "newRun",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110,
+                  95,
+                  118,
+                  50
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "old_run.run_id",
+                "account": "airdropRun"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "migrateState",
+      "docs": [
+        "Migrate GlobalState to GlobalStateV2 (closes old account, creates new one)"
+      ],
+      "discriminator": [
+        34,
+        189,
+        226,
+        222,
+        218,
+        156,
+        19,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "oldState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "newState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101,
+                  95,
+                  118,
+                  50
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "xnmAirdropped",
+          "type": "u64"
+        },
+        {
+          "name": "xblkAirdropped",
+          "type": "u64"
+        },
+        {
+          "name": "xuniAirdropped",
+          "type": "u64"
+        },
+        {
+          "name": "nativeAirdropped",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "releaseLock",
       "docs": [
         "Release the airdrop lock (holder only)"
@@ -450,7 +702,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -509,7 +764,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -546,6 +804,7 @@ export type XenblocksAirdropTracker = {
         },
         {
           "name": "state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -555,7 +814,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -581,6 +843,77 @@ export type XenblocksAirdropTracker = {
         },
         {
           "name": "nativeAmount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "updateRunTotals",
+      "docs": [
+        "Update run totals after completion"
+      ],
+      "discriminator": [
+        38,
+        24,
+        28,
+        212,
+        47,
+        29,
+        149,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "airdropRun",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "airdrop_run.run_id",
+                "account": "airdropRun"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "totalRecipients",
+          "type": "u32"
+        },
+        {
+          "name": "totalAmount",
           "type": "u64"
         }
       ]
@@ -617,7 +950,10 @@ export type XenblocksAirdropTracker = {
                   116,
                   97,
                   116,
-                  101
+                  101,
+                  95,
+                  118,
+                  50
                 ]
               }
             ]
@@ -704,6 +1040,19 @@ export type XenblocksAirdropTracker = {
       ]
     },
     {
+      "name": "airdropRun",
+      "discriminator": [
+        174,
+        215,
+        129,
+        23,
+        242,
+        50,
+        97,
+        35
+      ]
+    },
+    {
       "name": "airdropRunV2",
       "discriminator": [
         127,
@@ -727,6 +1076,19 @@ export type XenblocksAirdropTracker = {
         123,
         133,
         98
+      ]
+    },
+    {
+      "name": "globalStateV2",
+      "discriminator": [
+        244,
+        133,
+        94,
+        157,
+        48,
+        192,
+        238,
+        52
       ]
     }
   ],
@@ -876,6 +1238,56 @@ export type XenblocksAirdropTracker = {
       }
     },
     {
+      "name": "airdropRun",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "runId",
+            "docs": [
+              "Unique run ID"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "runDate",
+            "docs": [
+              "Unix timestamp when run started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "totalRecipients",
+            "docs": [
+              "Number of successful recipients"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "totalAmount",
+            "docs": [
+              "Total amount airdropped (in token base units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "dryRun",
+            "docs": [
+              "Whether this was a dry run"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "airdropRunV2",
       "type": {
         "kind": "struct",
@@ -990,6 +1402,82 @@ export type XenblocksAirdropTracker = {
               "Counter for run IDs"
             ],
             "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "globalStateV2",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Schema version (set to 1)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority who can create runs and update records"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "runCounter",
+            "docs": [
+              "Counter for run IDs"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xnmAirdropped",
+            "docs": [
+              "Cumulative XNM airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xblkAirdropped",
+            "docs": [
+              "Cumulative XBLK airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "xuniAirdropped",
+            "docs": [
+              "Cumulative XUNI airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "nativeAirdropped",
+            "docs": [
+              "Cumulative native (XNT) airdropped across all records"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Reserved space for future use"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                4
+              ]
+            }
           },
           {
             "name": "bump",
