@@ -27,6 +27,50 @@ export const GLOBAL_STATE_OFFSETS = {
 export const GLOBAL_STATE_SIZE = 8 + 32 + 8 + 1; // 49 bytes
 
 /**
+ * On-chain GlobalStateV2 account data structure (with cumulative totals)
+ */
+export interface GlobalStateV2 {
+  version: number;
+  authority: PublicKey;
+  runCounter: bigint;
+  xnmAirdropped: bigint;
+  xblkAirdropped: bigint;
+  xuniAirdropped: bigint;
+  nativeAirdropped: bigint;
+  reserved: bigint[];
+  bump: number;
+}
+
+/**
+ * Offset constants for GlobalStateV2 deserialization
+ * Account layout:
+ * - 8 bytes: Anchor discriminator
+ * - 1 byte: version (u8)
+ * - 32 bytes: authority (Pubkey)
+ * - 8 bytes: run_counter (u64)
+ * - 8 bytes: xnm_airdropped (u64)
+ * - 8 bytes: xblk_airdropped (u64)
+ * - 8 bytes: xuni_airdropped (u64)
+ * - 8 bytes: native_airdropped (u64)
+ * - 32 bytes: reserved ([u64; 4])
+ * - 1 byte: bump (u8)
+ */
+export const GLOBAL_STATE_V2_OFFSETS = {
+  DISCRIMINATOR: 0,
+  VERSION: 8,
+  AUTHORITY: 9,
+  RUN_COUNTER: 9 + 32,
+  XNM_AIRDROPPED: 9 + 32 + 8,
+  XBLK_AIRDROPPED: 9 + 32 + 8 + 8,
+  XUNI_AIRDROPPED: 9 + 32 + 8 + 8 + 8,
+  NATIVE_AIRDROPPED: 9 + 32 + 8 + 8 + 8 + 8,
+  RESERVED: 9 + 32 + 8 + 8 + 8 + 8 + 8,
+  BUMP: 9 + 32 + 8 + 8 + 8 + 8 + 8 + 32,
+} as const;
+
+export const GLOBAL_STATE_V2_SIZE = 8 + 1 + 32 + 8 + 8 + 8 + 8 + 8 + 32 + 1; // 114 bytes
+
+/**
  * On-chain AirdropRunV2 account data structure (per-token totals)
  */
 export interface OnChainAirdropRunV2 {

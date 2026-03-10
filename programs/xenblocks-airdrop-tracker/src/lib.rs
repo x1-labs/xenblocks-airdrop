@@ -16,6 +16,43 @@ pub mod xenblocks_airdrop_tracker {
         Ok(())
     }
 
+    /// Create a new airdrop run
+    pub fn create_run(ctx: Context<CreateRun>, dry_run: bool) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        let run = &mut ctx.accounts.airdrop_run;
+
+        state.run_counter += 1;
+
+        run.run_id = state.run_counter;
+        run.run_date = Clock::get()?.unix_timestamp;
+        run.total_recipients = 0;
+        run.total_amount = 0;
+        run.dry_run = dry_run;
+        run.bump = ctx.bumps.airdrop_run;
+
+        msg!("Created airdrop run #{}", run.run_id);
+        Ok(())
+    }
+
+    /// Update run totals after completion
+    pub fn update_run_totals(
+        ctx: Context<UpdateRunTotals>,
+        total_recipients: u32,
+        total_amount: u64,
+    ) -> Result<()> {
+        let run = &mut ctx.accounts.airdrop_run;
+        run.total_recipients = total_recipients;
+        run.total_amount = total_amount;
+
+        msg!(
+            "Updated run #{}: recipients={}, amount={}",
+            run.run_id,
+            total_recipients,
+            total_amount
+        );
+        Ok(())
+    }
+
     /// Create a new airdrop run (V2 with per-token totals)
     pub fn create_run_v2(ctx: Context<CreateRunV2>, dry_run: bool) -> Result<()> {
         let state = &mut ctx.accounts.state;
@@ -71,6 +108,28 @@ pub mod xenblocks_airdrop_tracker {
         Ok(())
     }
 
+    /// Migrate a v1 AirdropRun to AirdropRunV2 (closes v1 account)
+    pub fn migrate_run(ctx: Context<MigrateRun>) -> Result<()> {
+        let old_run = &ctx.accounts.old_run;
+        let new_run = &mut ctx.accounts.new_run;
+
+        new_run.version = 1;
+        new_run.run_id = old_run.run_id;
+        new_run.run_date = old_run.run_date;
+        new_run.total_recipients = old_run.total_recipients;
+        new_run.total_amount = old_run.total_amount;
+        new_run.total_xnm_amount = 0;
+        new_run.total_xblk_amount = 0;
+        new_run.total_xuni_amount = 0;
+        new_run.total_native_amount = 0;
+        new_run.dry_run = old_run.dry_run;
+        new_run.reserved = [0u64; 4];
+        new_run.bump = ctx.bumps.new_run;
+
+        msg!("Migrated run #{} from v1 to v2", old_run.run_id);
+        Ok(())
+    }
+
     /// Initialize a new airdrop record keyed by ETH address
     pub fn initialize_record_v2(
         ctx: Context<InitializeRecordV2>,
@@ -119,6 +178,25 @@ pub mod xenblocks_airdrop_tracker {
 
         record.last_updated = Clock::get()?.unix_timestamp;
 
+        // Increment global totals
+        let state = &mut ctx.accounts.state;
+        state.xnm_airdropped = state
+            .xnm_airdropped
+            .checked_add(xnm_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.xblk_airdropped = state
+            .xblk_airdropped
+            .checked_add(xblk_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.xuni_airdropped = state
+            .xuni_airdropped
+            .checked_add(xuni_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.native_airdropped = state
+            .native_airdropped
+            .checked_add(native_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
         msg!(
             "Updated V2 airdrop record: xnm={}, xblk={}, xuni={}, native={}",
             xnm_amount,
@@ -147,6 +225,25 @@ pub mod xenblocks_airdrop_tracker {
         record.reserved = [0u64; 4];
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
+
+        // Increment global totals
+        let state = &mut ctx.accounts.state;
+        state.xnm_airdropped = state
+            .xnm_airdropped
+            .checked_add(xnm_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.xblk_airdropped = state
+            .xblk_airdropped
+            .checked_add(xblk_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.xuni_airdropped = state
+            .xuni_airdropped
+            .checked_add(xuni_amount)
+            .ok_or(ErrorCode::Overflow)?;
+        state.native_airdropped = state
+            .native_airdropped
+            .checked_add(native_amount)
+            .ok_or(ErrorCode::Overflow)?;
 
         msg!(
             "Initialized and updated V2 airdrop record: xnm={}, xblk={}, xuni={}, native={}",
@@ -226,6 +323,38 @@ pub mod xenblocks_airdrop_tracker {
         lock.run_id = 0;
         Ok(())
     }
+
+    /// Migrate GlobalState to GlobalStateV2 (closes old account, creates new one)
+    pub fn migrate_state(
+        ctx: Context<MigrateState>,
+        xnm_airdropped: u64,
+        xblk_airdropped: u64,
+        xuni_airdropped: u64,
+        native_airdropped: u64,
+    ) -> Result<()> {
+        let old_state = &ctx.accounts.old_state;
+        let new_state = &mut ctx.accounts.new_state;
+
+        new_state.version = 1;
+        new_state.authority = old_state.authority;
+        new_state.run_counter = old_state.run_counter;
+        new_state.xnm_airdropped = xnm_airdropped;
+        new_state.xblk_airdropped = xblk_airdropped;
+        new_state.xuni_airdropped = xuni_airdropped;
+        new_state.native_airdropped = native_airdropped;
+        new_state.reserved = [0u64; 4];
+        new_state.bump = ctx.bumps.new_state;
+
+        msg!(
+            "Migrated global state: run_counter={}, xnm={}, xblk={}, xuni={}, native={}",
+            new_state.run_counter,
+            xnm_airdropped,
+            xblk_airdropped,
+            xuni_airdropped,
+            native_airdropped
+        );
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -250,7 +379,7 @@ pub struct InitializeState<'info> {
 }
 
 #[derive(Accounts)]
-pub struct CreateRunV2<'info> {
+pub struct CreateRun<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -261,6 +390,51 @@ pub struct CreateRunV2<'info> {
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
     pub state: Account<'info, GlobalState>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRun::INIT_SPACE,
+        seeds = [b"run", (state.run_counter + 1).to_le_bytes().as_ref()],
+        bump
+    )]
+    pub airdrop_run: Account<'info, AirdropRun>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateRunTotals<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalState>,
+
+    #[account(
+        mut,
+        seeds = [b"run", airdrop_run.run_id.to_le_bytes().as_ref()],
+        bump = airdrop_run.bump
+    )]
+    pub airdrop_run: Account<'info, AirdropRun>,
+}
+
+#[derive(Accounts)]
+pub struct CreateRunV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"state_v2"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         init,
@@ -280,11 +454,11 @@ pub struct UpdateRunTotalsV2<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         mut,
@@ -295,17 +469,76 @@ pub struct UpdateRunTotalsV2<'info> {
 }
 
 #[derive(Accounts)]
+pub struct MigrateRun<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state_v2"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalStateV2>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"run", old_run.run_id.to_le_bytes().as_ref()],
+        bump = old_run.bump
+    )]
+    pub old_run: Account<'info, AirdropRun>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + AirdropRunV2::INIT_SPACE,
+        seeds = [b"run_v2", old_run.run_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub new_run: Account<'info, AirdropRunV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct MigrateState<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"state"],
+        bump = old_state.bump,
+        constraint = old_state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub old_state: Account<'info, GlobalState>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + GlobalStateV2::INIT_SPACE,
+        seeds = [b"state_v2"],
+        bump
+    )]
+    pub new_state: Account<'info, GlobalStateV2>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(eth_address: [u8; 42])]
 pub struct InitializeRecordV2<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        mut,
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         init,
@@ -329,11 +562,12 @@ pub struct UpdateRecordV2<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        mut,
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         mut,
@@ -353,11 +587,11 @@ pub struct CloseRecordV2<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         mut,
@@ -379,11 +613,11 @@ pub struct UpdateAuthority<'info> {
 
     #[account(
         mut,
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 }
 
 #[derive(Accounts)]
@@ -392,11 +626,11 @@ pub struct InitializeLock<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         init,
@@ -416,11 +650,11 @@ pub struct AcquireLock<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         mut,
@@ -436,11 +670,11 @@ pub struct ReleaseLock<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        seeds = [b"state"],
+        seeds = [b"state_v2"],
         bump = state.bump,
         constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
     )]
-    pub state: Account<'info, GlobalState>,
+    pub state: Account<'info, GlobalStateV2>,
 
     #[account(
         mut,
@@ -461,6 +695,46 @@ pub struct GlobalState {
     pub authority: Pubkey, // 32 bytes
     /// Counter for run IDs
     pub run_counter: u64, // 8 bytes
+    /// PDA bump
+    pub bump: u8, // 1 byte
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct GlobalStateV2 {
+    /// Schema version (set to 1)
+    pub version: u8, // 1 byte
+    /// Authority who can create runs and update records
+    pub authority: Pubkey, // 32 bytes
+    /// Counter for run IDs
+    pub run_counter: u64, // 8 bytes
+    /// Cumulative XNM airdropped across all records
+    pub xnm_airdropped: u64, // 8 bytes
+    /// Cumulative XBLK airdropped across all records
+    pub xblk_airdropped: u64, // 8 bytes
+    /// Cumulative XUNI airdropped across all records
+    pub xuni_airdropped: u64, // 8 bytes
+    /// Cumulative native (XNT) airdropped across all records
+    pub native_airdropped: u64, // 8 bytes
+    /// Reserved space for future use
+    pub reserved: [u64; 4], // 32 bytes
+    /// PDA bump
+    pub bump: u8, // 1 byte
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct AirdropRun {
+    /// Unique run ID
+    pub run_id: u64, // 8 bytes
+    /// Unix timestamp when run started
+    pub run_date: i64, // 8 bytes
+    /// Number of successful recipients
+    pub total_recipients: u32, // 4 bytes
+    /// Total amount airdropped (in token base units)
+    pub total_amount: u64, // 8 bytes
+    /// Whether this was a dry run
+    pub dry_run: bool, // 1 byte
     /// PDA bump
     pub bump: u8, // 1 byte
 }

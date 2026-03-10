@@ -10,6 +10,7 @@ import {
 import {
   deriveAirdropRecordPDA,
   deriveGlobalStatePDA,
+  deriveGlobalStateLegacyPDA,
   deriveAirdropRunPDA,
   deriveAirdropLockPDA,
   ethAddressToBytes,
@@ -17,12 +18,12 @@ import {
 import {
   AIRDROP_RECORD_V2_OFFSETS,
   AIRDROP_RECORD_V2_SIZE,
-  GLOBAL_STATE_OFFSETS,
+  GLOBAL_STATE_V2_OFFSETS,
   AIRDROP_RUN_V2_OFFSETS,
   AIRDROP_LOCK_OFFSETS,
   AirdropRecordV2,
   AirdropLock,
-  GlobalState,
+  GlobalStateV2,
   OnChainAirdropRunV2,
 } from './types.js';
 
@@ -31,16 +32,48 @@ import {
 // ============================================================================
 
 /**
- * Deserialize a GlobalState from account data
+ * Deserialize a GlobalStateV2 from account data
  */
-export function deserializeGlobalState(data: Buffer): GlobalState {
+export function deserializeGlobalState(data: Buffer): GlobalStateV2 {
+  const version = data.readUInt8(GLOBAL_STATE_V2_OFFSETS.VERSION);
   const authority = new PublicKey(
-    data.slice(GLOBAL_STATE_OFFSETS.AUTHORITY, GLOBAL_STATE_OFFSETS.RUN_COUNTER)
+    data.slice(
+      GLOBAL_STATE_V2_OFFSETS.AUTHORITY,
+      GLOBAL_STATE_V2_OFFSETS.RUN_COUNTER
+    )
   );
-  const runCounter = data.readBigUInt64LE(GLOBAL_STATE_OFFSETS.RUN_COUNTER);
-  const bump = data.readUInt8(GLOBAL_STATE_OFFSETS.BUMP);
+  const runCounter = data.readBigUInt64LE(GLOBAL_STATE_V2_OFFSETS.RUN_COUNTER);
+  const xnmAirdropped = data.readBigUInt64LE(
+    GLOBAL_STATE_V2_OFFSETS.XNM_AIRDROPPED
+  );
+  const xblkAirdropped = data.readBigUInt64LE(
+    GLOBAL_STATE_V2_OFFSETS.XBLK_AIRDROPPED
+  );
+  const xuniAirdropped = data.readBigUInt64LE(
+    GLOBAL_STATE_V2_OFFSETS.XUNI_AIRDROPPED
+  );
+  const nativeAirdropped = data.readBigUInt64LE(
+    GLOBAL_STATE_V2_OFFSETS.NATIVE_AIRDROPPED
+  );
+  const reserved: bigint[] = [];
+  for (let i = 0; i < 4; i++) {
+    reserved.push(
+      data.readBigUInt64LE(GLOBAL_STATE_V2_OFFSETS.RESERVED + i * 8)
+    );
+  }
+  const bump = data.readUInt8(GLOBAL_STATE_V2_OFFSETS.BUMP);
 
-  return { authority, runCounter, bump };
+  return {
+    version,
+    authority,
+    runCounter,
+    xnmAirdropped,
+    xblkAirdropped,
+    xuniAirdropped,
+    nativeAirdropped,
+    reserved,
+    bump,
+  };
 }
 
 /**
@@ -157,7 +190,7 @@ export function deserializeAirdropLock(data: Buffer): AirdropLock {
 export async function getGlobalState(
   connection: Connection,
   programId: PublicKey
-): Promise<GlobalState | null> {
+): Promise<GlobalStateV2 | null> {
   const [pda] = deriveGlobalStatePDA(programId);
   const accountInfo = await connection.getAccountInfo(pda);
 
@@ -317,13 +350,13 @@ export async function fetchAllMultiTokenSnapshots(
 // ============================================================================
 
 /**
- * Create instruction to initialize global state (one-time setup)
+ * Create instruction to initialize global state (one-time setup, V1 — legacy)
  */
 export function createInitializeStateInstruction(
   programId: PublicKey,
   authority: PublicKey
 ): TransactionInstruction {
-  const [state] = deriveGlobalStatePDA(programId);
+  const [state] = deriveGlobalStateLegacyPDA(programId);
 
   // Anchor discriminator for "initialize_state"
   const discriminator = Buffer.from([190, 171, 224, 219, 217, 72, 199, 176]);
@@ -336,6 +369,42 @@ export function createInitializeStateInstruction(
     ],
     programId,
     data: discriminator,
+  });
+}
+
+/**
+ * Create instruction to migrate GlobalState to GlobalStateV2
+ */
+export function createMigrateStateInstruction(
+  programId: PublicKey,
+  authority: PublicKey,
+  xnmAirdropped: bigint,
+  xblkAirdropped: bigint,
+  xuniAirdropped: bigint,
+  nativeAirdropped: bigint
+): TransactionInstruction {
+  const [oldState] = deriveGlobalStateLegacyPDA(programId);
+  const [newState] = deriveGlobalStatePDA(programId);
+
+  // Anchor discriminator for "migrate_state"
+  const discriminator = Buffer.from([34, 189, 226, 222, 218, 156, 19, 213]);
+
+  const data = Buffer.alloc(discriminator.length + 8 + 8 + 8 + 8);
+  discriminator.copy(data, 0);
+  data.writeBigUInt64LE(xnmAirdropped, 8);
+  data.writeBigUInt64LE(xblkAirdropped, 16);
+  data.writeBigUInt64LE(xuniAirdropped, 24);
+  data.writeBigUInt64LE(nativeAirdropped, 32);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: oldState, isSigner: false, isWritable: true },
+      { pubkey: newState, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId,
+    data,
   });
 }
 
@@ -431,7 +500,7 @@ export function createInitializeRecordInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: state, isSigner: false, isWritable: true },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
@@ -469,7 +538,7 @@ export function createUpdateRecordInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: state, isSigner: false, isWritable: true },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
     ],
     programId,
@@ -521,7 +590,7 @@ export function createInitializeAndUpdateInstruction(
   return new TransactionInstruction({
     keys: [
       { pubkey: authority, isSigner: true, isWritable: true },
-      { pubkey: state, isSigner: false, isWritable: false },
+      { pubkey: state, isSigner: false, isWritable: true },
       { pubkey: airdropRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],

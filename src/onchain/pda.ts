@@ -1,11 +1,22 @@
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * Derive the PDA for the global state account
+ * Derive the PDA for the global state account (V2)
+ *
+ * Seeds: ["state_v2"]
+ */
+export function deriveGlobalStatePDA(
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from('state_v2')], programId);
+}
+
+/**
+ * Derive the PDA for the legacy global state account (for migration only)
  *
  * Seeds: ["state"]
  */
-export function deriveGlobalStatePDA(
+export function deriveGlobalStateLegacyPDA(
   programId: PublicKey
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('state')], programId);
