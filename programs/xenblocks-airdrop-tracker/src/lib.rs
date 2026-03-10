@@ -192,6 +192,24 @@ pub mod xenblocks_airdrop_tracker {
         Ok(())
     }
 
+    /// Close the global state and reclaim rent (admin only)
+    pub fn close_state(_ctx: Context<CloseState>) -> Result<()> {
+        msg!("Closed global state and reclaimed rent");
+        Ok(())
+    }
+
+    /// Close an airdrop run and reclaim rent (admin only)
+    pub fn close_run_v2(_ctx: Context<CloseRunV2>) -> Result<()> {
+        msg!("Closed airdrop run and reclaimed rent");
+        Ok(())
+    }
+
+    /// Close the airdrop lock and reclaim rent (admin only)
+    pub fn close_lock(_ctx: Context<CloseLock>) -> Result<()> {
+        msg!("Closed airdrop lock and reclaimed rent");
+        Ok(())
+    }
+
     /// Transfer authority to a new public key (current authority only)
     pub fn update_authority(ctx: Context<UpdateAuthority>, new_authority: Pubkey) -> Result<()> {
         let state = &mut ctx.accounts.state;
@@ -384,6 +402,63 @@ pub struct CloseRecordV2<'info> {
         bump = airdrop_record.bump
     )]
     pub airdrop_record: Account<'info, AirdropRecordV2>,
+}
+
+#[derive(Accounts)]
+pub struct CloseState<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"state_v2"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalStateV2>,
+}
+
+#[derive(Accounts)]
+pub struct CloseRunV2<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state_v2"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalStateV2>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"run_v2", airdrop_run.run_id.to_le_bytes().as_ref()],
+        bump = airdrop_run.bump
+    )]
+    pub airdrop_run: Account<'info, AirdropRunV2>,
+}
+
+#[derive(Accounts)]
+pub struct CloseLock<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [b"state_v2"],
+        bump = state.bump,
+        constraint = state.authority == authority.key() @ ErrorCode::Unauthorized
+    )]
+    pub state: Account<'info, GlobalStateV2>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"lock"],
+        bump = lock.bump
+    )]
+    pub lock: Account<'info, AirdropLock>,
 }
 
 #[derive(Accounts)]
