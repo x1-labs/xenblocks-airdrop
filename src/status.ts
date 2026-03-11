@@ -24,6 +24,9 @@ interface LeaderboardResponse {
   totalXnm: number;
   totalXblk: number;
   totalXuni: number;
+  totalXnmWithSol: number;
+  totalXblkWithSol: number;
+  totalXuniWithSol: number;
 }
 
 async function main(): Promise<void> {
@@ -49,6 +52,16 @@ async function main(): Promise<void> {
   const apiXnm = convertApiAmountToTokenAmount(data.totalXnm.toString());
   const apiXblk = convertApiAmountToTokenAmount(data.totalXblk.toString());
   const apiXuni = convertApiAmountToTokenAmount(data.totalXuni.toString());
+
+  const eligibleXnm = convertApiAmountToTokenAmount(
+    (data.totalXnmWithSol ?? data.totalXnm).toString()
+  );
+  const eligibleXblk = convertApiAmountToTokenAmount(
+    (data.totalXblkWithSol ?? data.totalXblk).toString()
+  );
+  const eligibleXuni = convertApiAmountToTokenAmount(
+    (data.totalXuniWithSol ?? data.totalXuni).toString()
+  );
 
   const connection = new Connection(rpcEndpoint, 'confirmed');
 
@@ -91,11 +104,6 @@ async function main(): Promise<void> {
     trackerXuni += snapshot.xuniAirdropped;
   }
 
-  // Delta = API total - mint supply (what hasn't been minted yet)
-  const deltaXnm = apiXnm - supplyXnm;
-  const deltaXblk = apiXblk - supplyXblk;
-  const deltaXuni = apiXuni - supplyXuni;
-
   // Pending airdrop (per-miner deltas for eligible recipients)
   const perMinerDeltas = calculateMultiTokenDeltas(miners, snapshots);
   const pending = calculateMultiTokenTotals(perMinerDeltas);
@@ -103,19 +111,19 @@ async function main(): Promise<void> {
   const fmt = (v: bigint) => formatTokenAmount(v, DECIMALS);
 
   console.log(
-    `\n  Token    API Total              Mint Supply            Delta                  Tracker Total          Pending (${perMinerDeltas.length} recipients)`
+    `\n  Token    API Total              Eligible               Mint Supply            Tracker Total          Pending (${perMinerDeltas.length} recipients)`
   );
   console.log(
-    `  -----    ---------              -----------            -----                  -------------          -------`
+    `  -----    ---------              --------               -----------            -------------          -------`
   );
   console.log(
-    `  XNM      ${fmt(apiXnm).padEnd(22)} ${fmt(supplyXnm).padEnd(22)} ${fmt(deltaXnm).padEnd(22)} ${fmt(trackerXnm).padEnd(22)} ${fmt(pending.totalXnm)}`
+    `  XNM      ${fmt(apiXnm).padEnd(22)} ${fmt(eligibleXnm).padEnd(22)} ${fmt(supplyXnm).padEnd(22)} ${fmt(trackerXnm).padEnd(22)} ${fmt(pending.totalXnm)}`
   );
   console.log(
-    `  XBLK     ${fmt(apiXblk).padEnd(22)} ${fmt(supplyXblk).padEnd(22)} ${fmt(deltaXblk).padEnd(22)} ${fmt(trackerXblk).padEnd(22)} ${fmt(pending.totalXblk)}`
+    `  XBLK     ${fmt(apiXblk).padEnd(22)} ${fmt(eligibleXblk).padEnd(22)} ${fmt(supplyXblk).padEnd(22)} ${fmt(trackerXblk).padEnd(22)} ${fmt(pending.totalXblk)}`
   );
   console.log(
-    `  XUNI     ${fmt(apiXuni).padEnd(22)} ${fmt(supplyXuni).padEnd(22)} ${fmt(deltaXuni).padEnd(22)} ${fmt(trackerXuni).padEnd(22)} ${fmt(pending.totalXuni)}`
+    `  XUNI     ${fmt(apiXuni).padEnd(22)} ${fmt(eligibleXuni).padEnd(22)} ${fmt(supplyXuni).padEnd(22)} ${fmt(trackerXuni).padEnd(22)} ${fmt(pending.totalXuni)}`
   );
   console.log(`\n  On-chain records: ${snapshots.size}`);
 

@@ -349,6 +349,29 @@ export async function fetchAllMultiTokenSnapshots(
 // ============================================================================
 
 /**
+ * Create instruction to initialize the GlobalStateV2 PDA
+ */
+export function createInitializeStateV2Instruction(
+  programId: PublicKey,
+  authority: PublicKey
+): TransactionInstruction {
+  const [state] = deriveGlobalStatePDA(programId);
+
+  // Anchor discriminator for "initialize_state_v2"
+  const discriminator = Buffer.from([50, 88, 153, 218, 18, 3, 245, 107]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: state, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId,
+    data: discriminator,
+  });
+}
+
+/**
  * Create instruction to create a new airdrop run
  */
 export function createCreateRunV2Instruction(
@@ -647,6 +670,29 @@ export function createReleaseLockInstruction(
 // ============================================================================
 // High-Level Functions
 // ============================================================================
+
+/**
+ * Initialize the GlobalStateV2 PDA (one-time setup)
+ */
+export async function initializeStateV2(
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair
+): Promise<string> {
+  const transaction = new Transaction();
+  transaction.add(
+    createInitializeStateV2Instruction(programId, payer.publicKey)
+  );
+
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [payer],
+    { commitment: 'confirmed' }
+  );
+
+  return signature;
+}
 
 /**
  * Create a new airdrop run on-chain (V2 with per-token totals)

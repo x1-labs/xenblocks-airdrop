@@ -28,6 +28,7 @@ import {
   createOnChainRunV2,
   updateOnChainRunTotalsV2,
   getGlobalState,
+  initializeStateV2,
   getAirdropLock,
   initializeLock,
   acquireLock,
@@ -50,18 +51,6 @@ function isValidSolanaAddress(address: string): boolean {
   }
 }
 
-/**
- * Check if an address is on the ed25519 curve (can own an ATA)
- * PDA addresses and program IDs are off-curve and cannot own standard ATAs
- */
-function isOnCurveAddress(address: string): boolean {
-  try {
-    const pubkey = new PublicKey(address);
-    return PublicKey.isOnCurve(pubkey.toBytes());
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Fetch miners from the API with pagination
@@ -132,21 +121,8 @@ export async function fetchMiners(apiEndpoint: string): Promise<Miner[]> {
     validFormat.push(miner);
   }
 
-  // Second filter: must be on-curve (can own an ATA)
-  const validMiners: Miner[] = [];
-  for (const miner of validFormat) {
-    if (!isOnCurveAddress(miner.solAddress)) {
-      logger.warn(
-        { wallet: miner.solAddress, ethAddress: miner.account },
-        'Skipped off-curve address (PDA/program)'
-      );
-      continue;
-    }
-    validMiners.push(miner);
-  }
-
-  logger.info({ count: validMiners.length }, 'Found valid miners');
-  return validMiners;
+  logger.info({ count: validFormat.length }, 'Found valid miners');
+  return validFormat;
 }
 
 /**
@@ -252,13 +228,19 @@ export async function executeAirdrop(
     'Payer token balances'
   );
 
-  // Verify global state is initialized
+  // Initialize global state if it doesn't exist
   const globalState = await getGlobalState(
     connection,
     config.airdropTrackerProgramId
   );
   if (!globalState) {
-    throw new Error('GlobalStateV2 not found. Run the migration script first.');
+    logger.info('Initializing GlobalStateV2...');
+    const stateInitSig = await initializeStateV2(
+      connection,
+      config.airdropTrackerProgramId,
+      payer
+    );
+    logger.debug({ signature: stateInitSig }, 'GlobalStateV2 initialized');
   }
 
   // Initialize lock PDA if it doesn't exist
