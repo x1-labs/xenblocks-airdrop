@@ -51,7 +51,6 @@ function isValidSolanaAddress(address: string): boolean {
   }
 }
 
-
 /**
  * Fetch miners from the API with pagination
  * Fetches in chunks of 1000 until no more records are returned
