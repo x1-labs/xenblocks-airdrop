@@ -220,23 +220,32 @@ export async function getAirdropRun(
 
 /**
  * Fetch the run_date of the most recent AirdropRun.
- * Returns the Unix timestamp (seconds) as a bigint, or null if no runs exist.
+ * When skipDryRuns is true, walks backwards through runs to find the last
+ * real (non-dry-run) airdrop. Returns the Unix timestamp (seconds) as a
+ * bigint, or null if no matching runs exist.
  */
 export async function getLastRunDate(
   connection: Connection,
-  programId: PublicKey
+  programId: PublicKey,
+  skipDryRuns: boolean = false
 ): Promise<bigint | null> {
   const state = await getGlobalState(connection, programId);
   if (!state || state.runCounter === 0n) {
     return null;
   }
 
-  const run = await getAirdropRun(connection, programId, state.runCounter);
-  if (!run) {
-    return null;
+  for (let id = state.runCounter; id >= 1n; id--) {
+    const run = await getAirdropRun(connection, programId, id);
+    if (!run) {
+      continue;
+    }
+    if (skipDryRuns && run.dryRun) {
+      continue;
+    }
+    return run.runDate;
   }
 
-  return run.runDate;
+  return null;
 }
 
 /**

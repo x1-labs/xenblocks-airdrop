@@ -99,7 +99,8 @@ async function main(): Promise<void> {
       // Check when the last run happened
       const lastRunDate = await getLastRunDate(
         connection,
-        config.airdropTrackerProgramId
+        config.airdropTrackerProgramId,
+        !config.dryRun
       );
 
       if (lastRunDate !== null) {
@@ -134,7 +135,8 @@ async function main(): Promise<void> {
 
             const refreshed = await getLastRunDate(
               connection,
-              config.airdropTrackerProgramId
+              config.airdropTrackerProgramId,
+              !config.dryRun
             );
             if (refreshed !== null) {
               currentLastRunMs = Number(refreshed) * 1000;
