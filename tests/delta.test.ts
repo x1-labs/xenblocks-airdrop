@@ -5,7 +5,13 @@ import { Miner, DeltaResult } from '../src/airdrop/types';
 describe('calculateDeltas', () => {
   it('should return full amount for new wallets (not in snapshot)', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18', xblk: '0' },
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '1E+18',
+        xblk: '0',
+        xuni: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>();
 
@@ -19,7 +25,13 @@ describe('calculateDeltas', () => {
 
   it('should calculate positive delta for existing wallets with increase', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '2E+18', xblk: '0' },
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '2E+18',
+        xblk: '0',
+        xuni: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
@@ -32,7 +44,13 @@ describe('calculateDeltas', () => {
 
   it('should exclude wallets with zero delta (same amount)', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '1E+18', xblk: '0' },
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '1E+18',
+        xblk: '0',
+        xuni: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
@@ -43,7 +61,13 @@ describe('calculateDeltas', () => {
 
   it('should exclude wallets with negative delta (decreased amount)', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '5E+17', xblk: '0' },
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '5E+17',
+        xblk: '0',
+        xuni: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>([['0xeth1', 1000000000n]]);
 
@@ -54,10 +78,34 @@ describe('calculateDeltas', () => {
 
   it('should handle mixed scenarios with multiple wallets', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '3E+18', xblk: '0' }, // increased
-      { account: '0xeth2', solAddress: 'wallet2', xnm: '1E+18', xblk: '0' }, // same
-      { account: '0xeth3', solAddress: 'wallet3', xnm: '5E+17', xblk: '0' }, // decreased
-      { account: '0xeth4', solAddress: 'wallet4', xnm: '2E+18', xblk: '0' }, // new
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '3E+18',
+        xblk: '0',
+        xuni: '0',
+      }, // increased
+      {
+        account: '0xeth2',
+        solAddress: 'wallet2',
+        xnm: '1E+18',
+        xblk: '0',
+        xuni: '0',
+      }, // same
+      {
+        account: '0xeth3',
+        solAddress: 'wallet3',
+        xnm: '5E+17',
+        xblk: '0',
+        xuni: '0',
+      }, // decreased
+      {
+        account: '0xeth4',
+        solAddress: 'wallet4',
+        xnm: '2E+18',
+        xblk: '0',
+        xuni: '0',
+      }, // new
     ];
     const snapshot = new Map<string, bigint>([
       ['0xeth1', 1000000000n],
@@ -83,6 +131,7 @@ describe('calculateDeltas', () => {
         solAddress: 'wallet1',
         xnm: '1.5E+18',
         xblk: '0',
+        xuni: '0',
       },
     ];
     const snapshot = new Map<string, bigint>();
@@ -95,7 +144,13 @@ describe('calculateDeltas', () => {
 
   it('should calculate deltas for xblk token type', () => {
     const miners: Miner[] = [
-      { account: '0xeth1', solAddress: 'wallet1', xnm: '0', xblk: '1E+18' },
+      {
+        account: '0xeth1',
+        solAddress: 'wallet1',
+        xnm: '0',
+        xblk: '1E+18',
+        xuni: '0',
+      },
     ];
     const snapshot = new Map<string, bigint>();
 
