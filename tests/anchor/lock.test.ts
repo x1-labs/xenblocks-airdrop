@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { PublicKey, Keypair, SystemProgram } from '@solana/web3.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
+// Type-only: erased at compile time, so the lazy runtime import below still
+// governs whether the package is loaded when no validator is configured.
+import type { Idl } from '@anchor-lang/core';
 
 // Skip entire suite when not running under anchor test (no local validator)
 const hasValidator = !!process.env.ANCHOR_PROVIDER_URL;
@@ -40,7 +43,7 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
     anchor.setProvider(provider);
 
     program = new anchor.Program(
-      IDL as anchor.Idl,
+      IDL as Idl,
       provider
     ) as unknown as typeof program;
 
@@ -53,8 +56,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .initializeStateV2()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          systemProgram: SystemProgram.programId,
         })
         .rpc();
     }
@@ -72,9 +73,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .initializeLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
-          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -93,9 +91,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .initializeLock()
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
-            systemProgram: SystemProgram.programId,
           })
           .rpc();
       }
@@ -106,9 +101,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .initializeLock()
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
-            systemProgram: SystemProgram.programId,
           })
           .rpc()
       ).rejects.toThrow();
@@ -124,9 +116,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .initializeLock()
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
-            systemProgram: SystemProgram.programId,
           })
           .rpc();
       }
@@ -139,8 +128,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
             .releaseLock()
             .accounts({
               authority: authority.publicKey,
-              state: statePDA,
-              lock: lockPDA,
             })
             .rpc();
         } catch {
@@ -154,8 +141,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(60))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -169,8 +154,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
     });
@@ -181,8 +164,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .acquireLock(new anchor.BN(30))
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
           })
           .rpc()
       ).rejects.toThrow(/InvalidTimeout|0x1773/);
@@ -194,8 +175,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .acquireLock(new anchor.BN(7200))
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
           })
           .rpc()
       ).rejects.toThrow(/InvalidTimeout|0x1773/);
@@ -207,8 +186,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(3600))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -218,8 +195,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .acquireLock(new anchor.BN(60))
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
           })
           .rpc()
       ).rejects.toThrow(/LockHeld|0x1772/);
@@ -229,8 +204,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
     });
@@ -240,8 +213,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(3600))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -253,8 +224,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
     });
@@ -264,8 +233,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(60))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -277,8 +244,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
     });
@@ -291,8 +256,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(300))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -301,8 +264,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -320,8 +281,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .releaseLock()
           .accounts({
             authority: authority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
           })
           .rpc()
       ).rejects.toThrow(/LockNotHeld|0x1774/);
@@ -344,8 +303,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
           .acquireLock(new anchor.BN(60))
           .accounts({
             authority: fakeAuthority.publicKey,
-            state: statePDA,
-            lock: lockPDA,
           })
           .signers([fakeAuthority])
           .rpc()
@@ -360,8 +317,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(120))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -373,8 +328,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -386,8 +339,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .acquireLock(new anchor.BN(600))
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
 
@@ -400,8 +351,6 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
         .releaseLock()
         .accounts({
           authority: authority.publicKey,
-          state: statePDA,
-          lock: lockPDA,
         })
         .rpc();
     });
