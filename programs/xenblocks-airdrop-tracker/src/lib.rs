@@ -19,7 +19,10 @@ pub mod xenblocks_airdrop_tracker {
         state.reserved = [0u64; 4];
         state.bump = ctx.bumps.state;
 
-        msg!("Initialized GlobalStateV2 with authority {}", state.authority);
+        msg!(
+            "Initialized GlobalStateV2 with authority {}",
+            state.authority
+        );
         Ok(())
     }
 
@@ -93,7 +96,10 @@ pub mod xenblocks_airdrop_tracker {
         record.last_updated = Clock::get()?.unix_timestamp;
         record.bump = ctx.bumps.airdrop_record;
 
-        msg!("Initialized V2 airdrop record for eth: {:?}", &eth_address[..6]);
+        msg!(
+            "Initialized V2 airdrop record for eth: {:?}",
+            &eth_address[..6]
+        );
         Ok(())
     }
 
@@ -206,7 +212,11 @@ pub mod xenblocks_airdrop_tracker {
     /// Transfer authority to a new public key (current authority only)
     pub fn update_authority(ctx: Context<UpdateAuthority>, new_authority: Pubkey) -> Result<()> {
         let state = &mut ctx.accounts.state;
-        msg!("Authority updated from {} to {}", state.authority, new_authority);
+        msg!(
+            "Authority updated from {} to {}",
+            state.authority,
+            new_authority
+        );
         state.authority = new_authority;
         Ok(())
     }
@@ -265,7 +275,6 @@ pub mod xenblocks_airdrop_tracker {
         lock.run_id = 0;
         Ok(())
     }
-
 }
 
 // ============================================================================

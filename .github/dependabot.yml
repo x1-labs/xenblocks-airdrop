@@ -1,8 +1,12 @@
 version: 2
 
 updates:
-  # Bun / npm dependencies (package.json + bun.lock)
-  - package-ecosystem: npm
+  # JavaScript dependencies. Must be `bun`, not `npm`: `npm` resolves
+  # package.json with npm's resolver and leaves bun.lock untouched, so every
+  # PR fails `bun install --frozen-lockfile`. `bun` updates both.
+  # Trade-off: the bun ecosystem supports version updates only, not security
+  # updates. Dependabot alerts still fire, and CI gates on `bun audit --prod`.
+  - package-ecosystem: bun
     directory: /
     schedule:
       interval: weekly
