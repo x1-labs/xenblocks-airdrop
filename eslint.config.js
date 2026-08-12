@@ -6,23 +6,12 @@ import prettier from 'eslint-config-prettier';
 export default [
   eslint.configs.recommended,
   {
-    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    files: ['src/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
-      },
-      globals: {
-        console: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        BigInt: 'readonly',
-        fetch: 'readonly',
       },
     },
     plugins: {
@@ -37,6 +26,11 @@ export default [
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': 'off',
+      // TypeScript already reports undefined identifiers, and the base rule
+      // cannot see type-position uses (`IDL as anchor.Idl`), so it reports
+      // false positives. typescript-eslint recommends disabling it.
+      // This also makes an explicit `globals` list unnecessary.
+      'no-undef': 'off',
     },
   },
   prettier,

@@ -1,0 +1,11 @@
+{
+  // Typecheck-only config covering the files tsconfig.json leaves out.
+  // tsconfig.json drives the build, so it is limited to src/ with rootDir src;
+  // tests and scripts still need type checking and editor support.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*"]
+}

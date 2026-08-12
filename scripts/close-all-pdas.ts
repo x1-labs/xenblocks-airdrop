@@ -29,7 +29,6 @@ import {
 import {
   deriveGlobalStatePDA,
   deriveAirdropLockPDA,
-  deriveAirdropRunPDA,
 } from '../src/onchain/pda.js';
 import {
   AIRDROP_RECORD_V2_SIZE,
@@ -111,7 +110,10 @@ async function main() {
         `  [${i + 1}/${recordAccounts.length}] Closed record ${ethAddr} — ${sig}`
       );
     } catch (err) {
-      console.error(`  [${i + 1}/${recordAccounts.length}] Failed ${pubkey.toBase58()}:`, err);
+      console.error(
+        `  [${i + 1}/${recordAccounts.length}] Failed ${pubkey.toBase58()}:`,
+        err
+      );
     }
   }
 
@@ -140,7 +142,10 @@ async function main() {
         `  [${i + 1}/${runAccounts.length}] Closed run #${run.runId} — ${sig}`
       );
     } catch (err) {
-      console.error(`  [${i + 1}/${runAccounts.length}] Failed ${pubkey.toBase58()}:`, err);
+      console.error(
+        `  [${i + 1}/${runAccounts.length}] Failed ${pubkey.toBase58()}:`,
+        err
+      );
     }
   }
 
