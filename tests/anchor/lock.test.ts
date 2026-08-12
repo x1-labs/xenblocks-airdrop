@@ -7,7 +7,11 @@ const hasValidator = !!process.env.ANCHOR_PROVIDER_URL;
 const PROGRAM_ID = new PublicKey('xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv');
 
 function deriveStatePDA(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from('state')], PROGRAM_ID);
+  // Must match the program's `seeds = [b"state_v2"]` and deriveGlobalStatePDA
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('state_v2')],
+    PROGRAM_ID
+  );
 }
 
 function deriveLockPDA(): [PublicKey, number] {
@@ -15,19 +19,19 @@ function deriveLockPDA(): [PublicKey, number] {
 }
 
 // Lazily initialized in beforeAll to avoid crashing when ANCHOR_PROVIDER_URL is missing
-let anchor: typeof import('@coral-xyz/anchor');
-let provider: import('@coral-xyz/anchor').AnchorProvider;
-let program: import('@coral-xyz/anchor').Program<
+let anchor: typeof import('@anchor-lang/core');
+let provider: import('@anchor-lang/core').AnchorProvider;
+let program: import('@anchor-lang/core').Program<
   import('../../target/types/xenblocks_airdrop_tracker').XenblocksAirdropTracker
 >;
-let authority: import('@coral-xyz/anchor').Wallet;
+let authority: import('@anchor-lang/core').Wallet;
 
 const [statePDA] = deriveStatePDA();
 const [lockPDA] = deriveLockPDA();
 
 describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
   beforeAll(async () => {
-    anchor = await import('@coral-xyz/anchor');
+    anchor = await import('@anchor-lang/core');
     const IDL = (
       await import('../../target/idl/xenblocks_airdrop_tracker.json')
     ).default;
@@ -40,13 +44,13 @@ describe.skipIf(!hasValidator)('AirdropLock on-chain tests', () => {
       provider
     ) as unknown as typeof program;
 
-    authority = provider.wallet as import('@coral-xyz/anchor').Wallet;
+    authority = provider.wallet as import('@anchor-lang/core').Wallet;
 
     // Initialize global state if not already done
     const stateAccount = await provider.connection.getAccountInfo(statePDA);
     if (!stateAccount) {
       await program.methods
-        .initializeState()
+        .initializeStateV2()
         .accounts({
           authority: authority.publicKey,
           state: statePDA,
