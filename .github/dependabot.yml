@@ -1,0 +1,70 @@
+version: 2
+
+updates:
+  # Bun / npm dependencies (package.json + bun.lock)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    groups:
+      # Keep the lint/format/test toolchain in a single PR
+      dev-tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      solana:
+        patterns:
+          - "@solana/*"
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions used by the CI and publish workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Dockerfile base image (oven/bun)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels:
+      - dependencies
+      - docker
+
+  # Anchor program crates
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels:
+      - dependencies
+      - rust
+    groups:
+      cargo:
+        update-types:
+          - minor
+          - patch

@@ -1,4 +1,4 @@
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1.3.14-alpine AS base
 WORKDIR /app
 
 LABEL org.opencontainers.image.source="https://github.com/x1-labs/xenblocks-airdrop"

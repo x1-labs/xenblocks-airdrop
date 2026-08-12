@@ -8,16 +8,16 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       with:
-        bun-version: latest
+        bun-version-file: .bun-version
 
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      id: cache
+    - name: Cache Bun install cache
+      uses: actions/cache@v6
       with:
-        path: "**/node_modules"
-        key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
+        path: ~/.bun/install/cache
+        key: bun-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-cache-${{ runner.os }}-
 
     - name: Install dependencies
-      if: steps.cache.outputs.cache-hit != 'true'
       run: bun install --frozen-lockfile
       shell: bash
