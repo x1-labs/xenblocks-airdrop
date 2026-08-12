@@ -89,7 +89,7 @@ function parseInterval(): number | null {
           'Missing value for --interval. Provide a duration like 30m, 12h, or 30d.'
         );
       }
-      return parseDuration(args[++i]);
+      return parseDuration(args[i + 1]);
     }
   }
   if (process.env.AIRDROP_INTERVAL) {
