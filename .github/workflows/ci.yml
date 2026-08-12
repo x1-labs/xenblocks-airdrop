@@ -79,8 +79,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # rustup installs the channel from rust-toolchain.toml (currently 1.82.0)
-      # on first cargo invocation, so a bump that raises the MSRV fails here.
+      # rustup installs the channel pinned in rust-toolchain.toml on first
+      # cargo invocation, so a bump that raises the MSRV fails here.
       - name: Show toolchain
         run: rustup show active-toolchain && cargo --version
 
