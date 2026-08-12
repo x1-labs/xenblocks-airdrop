@@ -15,6 +15,15 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - dependencies
+    ignore:
+      # typescript-eslint declares `typescript: <6.1.0` and fails at load with
+      # "typescript-eslint does not support TS 7.0" — true of every published
+      # version including canary, so the lint job cannot pass on TS 7.
+      # RELEASE CONDITION: drop this entry once typescript-eslint ships TS 7
+      # support (check `npm view @typescript-eslint/eslint-plugin peerDependencies`).
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       # Keep the lint/format/test toolchain in a single PR
       dev-tooling:
