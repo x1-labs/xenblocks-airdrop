@@ -69,6 +69,34 @@ jobs:
       - name: Run tests
         run: bun run test
 
+  # Gives cargo dependency bumps real evidence. Without this job, a crate PR
+  # shows only the TypeScript checks above, which never touch Rust — an MSRV
+  # or lockfile break reads as five green checks.
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # rustup installs the channel from rust-toolchain.toml (currently 1.82.0)
+      # on first cargo invocation, so a bump that raises the MSRV fails here.
+      - name: Show toolchain
+        run: rustup show active-toolchain && cargo --version
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # --locked fails if Cargo.lock disagrees with Cargo.toml
+      - name: Check
+        run: cargo check --locked --all-targets
+
   audit:
     name: Audit
     runs-on: ubuntu-latest
