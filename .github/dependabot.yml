@@ -27,7 +27,9 @@ updates:
           - minor
           - patch
 
-  # GitHub Actions used by the CI and publish workflows
+  # GitHub Actions used by the CI and publish workflows.
+  # Actions are pinned to commit SHAs; Dependabot bumps the SHA and the
+  # trailing version comment together.
   - package-ecosystem: github-actions
     directory: /
     schedule:

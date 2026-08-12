@@ -48,3 +48,4 @@ Anchor integration tests are excluded from `bun run test`; they need a local val
 - Dependency updates land through Dependabot PRs; keep `bun.lock` in sync with `package.json` and never hand-edit the lockfile.
 - The `overrides` block in `package.json` exists to patch transitive security advisories. Removing an entry re-introduces a known CVE — check `bun audit` before touching it.
 - CI enforces lint, format, types, tests, and a production `bun audit`. Failing checks are not "flaky"; fix the cause.
+- Third-party GitHub Actions are pinned to full commit SHAs with the version in a trailing comment. Never replace a pin with a tag — tags are mutable and a compromised upstream tag would run with our deploy credentials. Dependabot bumps the SHA and the comment together.
