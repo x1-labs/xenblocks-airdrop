@@ -97,6 +97,96 @@ jobs:
       - name: Check
         run: cargo check --locked --all-targets
 
+  # Builds the program the way it is actually deployed — the SBF target, using
+  # the platform-tools rustc that ships with the pinned Solana CLI rather than
+  # the host toolchain the `rust` job uses — then runs the on-chain suite
+  # against a local validator.
+  anchor:
+    name: Anchor Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      # Single source of truth: Anchor.toml, so the workflow cannot drift from
+      # the versions the program is built with locally.
+      - name: Read pinned versions
+        id: versions
+        run: |
+          {
+            echo "anchor=$(grep '^anchor_version' Anchor.toml | cut -d'"' -f2)"
+            echo "solana=$(grep '^solana_version' Anchor.toml | cut -d'"' -f2)"
+          } >> "$GITHUB_OUTPUT"
+
+      # platform-tools is a ~250MB download on first build.
+      - name: Cache platform-tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/solana
+          key: platform-tools-${{ runner.os }}-solana-${{ steps.versions.outputs.solana }}
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ steps.versions.outputs.solana }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      # Prebuilt binary — building anchor-cli from source costs ~10 minutes.
+      - name: Install Anchor CLI
+        env:
+          VERSION: ${{ steps.versions.outputs.anchor }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL -o "$HOME/.local/bin/anchor" \
+            "https://github.com/otter-sec/anchor/releases/download/v${VERSION}/anchor-${VERSION}-x86_64-unknown-linux-gnu"
+          chmod +x "$HOME/.local/bin/anchor"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: solana --version && anchor --version && cargo-build-sbf --version
+
+      - name: Build program
+        run: |
+          set -o pipefail
+          anchor build 2>&1 | tee build.log
+          # The SBF linker reports a blown 4KB stack frame as an error but
+          # `anchor build` still exits 0, so the exit code alone is not a gate.
+          # Exceeding the frame is undefined behaviour at runtime.
+          if grep -iqE "stack offset .*exceeded|exceeded max stack" build.log; then
+            grep -iE "stack offset|exceeded" build.log
+            echo "::error::SBF stack frame exceeded — box large accounts"
+            exit 1
+          fi
+
+      # target/idl and target/types are committed. A toolchain or framework
+      # bump that changes the on-chain interface shows up here as a diff.
+      - name: Verify on-chain interface unchanged
+        run: git diff --exit-code -- target/idl target/types
+
+      # SBPFv0 is ELF flags 0x0. A newer bytecode version would be rejected by
+      # the X1 runtime at deploy time rather than here.
+      - name: Verify SBPF version
+        run: |
+          FLAGS=$(readelf -h target/deploy/xenblocks_airdrop_tracker.so | awk '/Flags:/ {print $2}')
+          echo "ELF flags: $FLAGS"
+          [ "$FLAGS" = "0x0" ] || { echo "::error::expected SBPFv0 (0x0), got $FLAGS"; exit 1; }
+
+      # --bpf-program loads the program at its declare_id! address without
+      # needing its keypair, which CI does not have.
+      - name: Start validator and run on-chain tests
+        run: |
+          solana-keygen new --no-bip39-passphrase --force -o "$HOME/.config/solana/id.json"
+          solana-test-validator --ledger /tmp/test-ledger --quiet --reset \
+            --bpf-program xen8pjUWEnRbm1eML9CGtHvmmQfruXMKUybqGjn3chv \
+            target/deploy/xenblocks_airdrop_tracker.so &
+          until solana cluster-version --url http://localhost:8899 >/dev/null 2>&1; do sleep 2; done
+          solana airdrop 100 --url http://localhost:8899
+          ANCHOR_PROVIDER_URL=http://localhost:8899 \
+          ANCHOR_WALLET="$HOME/.config/solana/id.json" \
+            bun vitest run --config vitest.config.anchor.ts
+
   audit:
     name: Audit
     runs-on: ubuntu-latest

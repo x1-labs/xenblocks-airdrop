@@ -12,6 +12,9 @@ name = "xenblocks_airdrop_tracker"
 level = "warn"
 check-cfg = [
     'cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))',
+    # Anchor 1.x expands `target_os = "solana"` in the #[program] macro, which
+    # the host target does not know about.
+    'cfg(target_os, values("solana"))',
 ]
 
 [features]
@@ -23,5 +26,4 @@ default = []
 idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
-anchor-lang = "0.32.1"
-indexmap = "=2.7.1"
+anchor-lang = "1.1.2"

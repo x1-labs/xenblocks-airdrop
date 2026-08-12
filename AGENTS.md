@@ -24,7 +24,9 @@ bun src/lookup.ts <0xADDR>  # inspect one miner's on-chain record
 bun src/audit.ts            # compare API totals against on-chain records
 ```
 
-Anchor integration tests are excluded from `bun run test`; they need a local validator and run via `anchor test`.
+Anchor integration tests are excluded from `bun run test`; they need a local validator and run via `anchor test`. If port 8899 is already taken, point them at another validator with `ANCHOR_PROVIDER_URL` and `ANCHOR_WALLET` instead.
+
+The Rust, Anchor, and Solana versions are pinned together in `rust-toolchain.toml` and `Anchor.toml`, and they must move together: the crates set the MSRV, and the SBF build uses the platform-tools rustc that ships with the pinned Solana CLI, not the host toolchain. Raising a crate past what platform-tools supports fails the build with `feature 'edition2024' is required`.
 
 ## Conventions
 

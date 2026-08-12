@@ -629,7 +629,7 @@ export type XenblocksAirdropTracker = {
               },
               {
                 "kind": "account",
-                "path": "airdrop_run.run_id",
+                "path": "airdropRun.runId",
                 "account": "airdropRunV2"
               }
             ]

@@ -18,7 +18,7 @@ Each run fetches current miner totals from the xenblocks.io leaderboard, subtrac
 ## Prerequisites
 
 - [Bun](https://bun.com) — the version in [`.bun-version`](.bun-version) (`curl -fsSL https://bun.sh/install | bash`)
-- Rust and the Anchor CLI 0.32.1 (only needed to build or deploy the on-chain program)
+- Rust (version pinned in [`rust-toolchain.toml`](rust-toolchain.toml)), the Anchor CLI, and the Solana CLI — versions pinned in [`Anchor.toml`](Anchor.toml). Only needed to build or deploy the on-chain program.
 - A funded payer wallet holding:
   - native tokens for transaction fees
   - the XNM / XBLK / XUNI supply to distribute
