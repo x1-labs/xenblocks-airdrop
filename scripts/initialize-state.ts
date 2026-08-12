@@ -11,10 +11,7 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 
-import {
-  getGlobalState,
-  initializeStateV2,
-} from '../src/onchain/client.js';
+import { getGlobalState, initializeStateV2 } from '../src/onchain/client.js';
 
 dotenv.config();
 
