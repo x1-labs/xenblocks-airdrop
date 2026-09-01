@@ -113,6 +113,12 @@ jobs:
 
   deploy-mainnet:
     needs: deploy-testnet
+    # Gated on the `mainnet` environment's required reviewers. Without this a
+    # merge to main is a mainnet release: deploy-mainnet has no other guard and
+    # deploy-testnet only dispatches the testnet deploy without waiting for it,
+    # so nothing confirms testnet is healthy before mainnet goes out. The
+    # approver is that confirmation.
+    environment: mainnet
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
